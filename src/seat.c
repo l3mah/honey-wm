@@ -113,13 +113,7 @@ static void new_keyboard (
 	keyboard->server = server;
 	keyboard->wlr_keyboard = wlr_keyboard;
 
-	struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-	struct xkb_keymap *keymap =
-		xkb_keymap_new_from_names(context, NULL, XKB_KEYMAP_COMPILE_NO_FLAGS);
-	wlr_keyboard_set_keymap(wlr_keyboard, keymap);
-	xkb_keymap_unref(keymap);
-	xkb_context_unref(context);
-	wlr_keyboard_set_repeat_info(wlr_keyboard, 25, 600);
+	w3ld_input_apply_keyboard(server, wlr_keyboard);
 
 	keyboard->modifiers.notify = keyboard_modifiers;
 	wl_signal_add(&wlr_keyboard->events.modifiers, &keyboard->modifiers);
@@ -272,6 +266,7 @@ static void new_input (
 		break;
 	case WLR_INPUT_DEVICE_POINTER:
 		wlr_cursor_attach_input_device(server->cursor, device);
+		w3ld_input_add_device(server, device);
 		break;
 	default:
 		break;

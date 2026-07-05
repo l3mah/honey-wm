@@ -75,6 +75,56 @@ static void dispatch (
 		return;
 	}
 
+	if (!strncmp(line, "kb-layout ", 10)) {
+		char *save = NULL;
+		char *layout = strtok_r(line + 10, " \t", &save);
+		char *variant = strtok_r(NULL, " \t", &save);
+		char *model = strtok_r(NULL, " \t", &save);
+		char *options = strtok_r(NULL, " \t", &save);
+		char *rules = strtok_r(NULL, " \t", &save);
+		if (!layout) {
+			snprintf(reply, reply_size, "error: usage: kb-layout <layout>"
+					" [variant] [model] [options] [rules]");
+			return;
+		}
+		if (w3ld_kb_layout(server, layout, variant, model, options, rules))
+			snprintf(reply, reply_size, "ok");
+		else
+			snprintf(reply, reply_size, "error: bad keyboard layout");
+		return;
+	}
+
+	if (!strncmp(line, "kb-repeat ", 10)) {
+		int rate, delay;
+		if (sscanf(line + 10, "%d %d", &rate, &delay) != 2) {
+			snprintf(reply, reply_size, "error: usage: kb-repeat <rate> <delay>");
+			return;
+		}
+		if (w3ld_kb_repeat(server, rate, delay))
+			snprintf(reply, reply_size, "ok");
+		else
+			snprintf(reply, reply_size, "error: bad repeat values");
+		return;
+	}
+
+	if (!strncmp(line, "input ", 6)) {
+		char *save = NULL;
+		char *device = strtok_r(line + 6, " \t", &save);
+		char *option = strtok_r(NULL, " \t", &save);
+		char *value = strtok_r(NULL, " \t", &save);
+		if (!device || !option || !value) {
+			snprintf(reply, reply_size,
+					"error: usage: input <device|*> <option> <value>");
+			return;
+		}
+		if (w3ld_input_rule_add(server, device, option, value))
+			snprintf(reply, reply_size, "ok");
+		else
+			snprintf(reply, reply_size, "error: unknown input option '%s'",
+					option);
+		return;
+	}
+
 	if (!strcmp(line, "ping")) {
 		snprintf(reply, reply_size, "pong");
 		return;

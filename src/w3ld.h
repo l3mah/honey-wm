@@ -119,6 +119,12 @@ struct w3ld_server {
 	struct wlr_xcursor_manager *xcursor_manager;
 	struct wl_list keyboards; /* w3ld_keyboard.link */
 	struct wl_listener new_input;
+
+	/* keyboard config (RMLVO; NULL = xkb default) + repeat */
+	char *kb_layout, *kb_variant, *kb_model, *kb_options, *kb_rules;
+	int kb_repeat_rate, kb_repeat_delay;
+	struct wl_list input_rules;   /* w3ld_input_rule.link */
+	struct wl_list input_devices; /* w3ld_input_device.link (libinput config) */
 	struct wl_listener cursor_motion;
 	struct wl_listener cursor_motion_absolute;
 	struct wl_listener cursor_button;
@@ -201,6 +207,22 @@ struct w3ld_layer_surface {
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener commit;
+	struct wl_listener destroy;
+};
+
+/* --------------------------------------------------------------------- input */
+
+struct w3ld_input_rule {
+	struct wl_list link; /* w3ld_server.input_rules */
+	char *device; /* substring match against device name, or "*" */
+	char *option;
+	char *value;
+};
+
+struct w3ld_input_device {
+	struct wl_list link; /* w3ld_server.input_devices */
+	struct w3ld_server *server;
+	struct wlr_input_device *device;
 	struct wl_listener destroy;
 };
 
@@ -317,8 +339,37 @@ void w3ld_action_move_to_output (
 void w3ld_layer_setup (struct w3ld_server *server);
 void w3ld_layer_arrange (struct w3ld_output *output);
 
-/* Stubs filled in later milestones. */
+/* input */
 void w3ld_input_setup (struct w3ld_server *server);
+void w3ld_input_apply_keyboard (
+	struct w3ld_server *server,
+	struct wlr_keyboard *keyboard
+);
+void w3ld_input_add_device (
+	struct w3ld_server *server,
+	struct wlr_input_device *device
+);
+bool w3ld_kb_layout (
+	struct w3ld_server *server,
+	const char *layout,
+	const char *variant,
+	const char *model,
+	const char *options,
+	const char *rules
+);
+bool w3ld_kb_repeat (
+	struct w3ld_server *server,
+	int rate,
+	int delay
+);
+bool w3ld_input_rule_add (
+	struct w3ld_server *server,
+	const char *device,
+	const char *option,
+	const char *value
+);
+
+/* Stubs filled in later milestones. */
 void w3ld_decoration_setup (struct w3ld_server *server);
 void w3ld_xwayland_setup (struct w3ld_server *server);
 
