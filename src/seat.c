@@ -34,70 +34,6 @@ void w3ld_spawn (const char *command) {
 	}
 }
 
-/* ----------------------------------------------------------------- keybinds */
-
-/* Keysyms are matched at level 0 (unmodified), so shifted binds like
- * Super+Shift+1 still resolve to the base symbol (1, not exclam). */
-static bool handle_keybinding (
-	struct w3ld_server *server,
-	uint32_t modifiers,
-	xkb_keysym_t sym
-) {
-	bool shift = modifiers & WLR_MODIFIER_SHIFT;
-
-	if (sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
-		int number = sym - XKB_KEY_1 + 1;
-		if (shift)
-			w3ld_action_move_to_workspace(server, number);
-		else
-			w3ld_action_workspace(server, number);
-		return true;
-	}
-
-	switch (sym) {
-	case XKB_KEY_Return:
-		w3ld_spawn("alacritty");
-		return true;
-	case XKB_KEY_q:
-		if (shift)
-			w3ld_action_close(server);
-		return true;
-	case XKB_KEY_j:
-		w3ld_action_focus(server, +1);
-		return true;
-	case XKB_KEY_k:
-		w3ld_action_focus(server, -1);
-		return true;
-	case XKB_KEY_Tab:
-		w3ld_action_workspace_back(server);
-		return true;
-	case XKB_KEY_bracketright:
-		w3ld_action_workspace_cycle(server, +1);
-		return true;
-	case XKB_KEY_bracketleft:
-		w3ld_action_workspace_cycle(server, -1);
-		return true;
-	case XKB_KEY_Right:
-		if (shift)
-			w3ld_action_move_to_output(server, +1);
-		else
-			w3ld_action_focus_output(server, +1);
-		return true;
-	case XKB_KEY_Left:
-		if (shift)
-			w3ld_action_move_to_output(server, -1);
-		else
-			w3ld_action_focus_output(server, -1);
-		return true;
-	case XKB_KEY_e:
-		if (shift)
-			wl_display_terminate(server->display);
-		return true;
-	default:
-		return false;
-	}
-}
-
 /* ---------------------------------------------------------------- keyboards */
 
 static void keyboard_modifiers (
@@ -124,15 +60,16 @@ static void keyboard_key (
 	uint32_t modifiers = wlr_keyboard_get_modifiers(wlr_keyboard);
 
 	bool handled = false;
-	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED
-			&& (modifiers & WLR_MODIFIER_LOGO)) {
+	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+		/* Match at level 0 so shifted binds resolve to the base symbol
+		 * (Super+Shift+1 -> 1, not exclam). */
 		xkb_layout_index_t layout =
 			xkb_state_key_get_layout(wlr_keyboard->xkb_state, keycode);
 		const xkb_keysym_t *syms;
 		int count = xkb_keymap_key_get_syms_by_level(wlr_keyboard->keymap,
 				keycode, layout, 0, &syms);
 		for (int i = 0; i < count; i++) {
-			if (handle_keybinding(server, modifiers, syms[i])) {
+			if (w3ld_binding_run(server, modifiers, syms[i])) {
 				handled = true;
 				break;
 			}

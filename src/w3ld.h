@@ -17,6 +17,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/box.h>
+#include <xkbcommon/xkbcommon.h>
 
 struct w3ld_workspace;
 
@@ -47,6 +48,13 @@ struct w3ld_server {
 	struct wl_listener new_toplevel_decoration;
 	struct wl_list windows; /* w3ld_window.link — tiling/stack order */
 	struct w3ld_window *focused;
+
+	struct wl_list keybinds; /* w3ld_keybind.link */
+
+	int ipc_fd; /* listening control socket, or -1 */
+	struct wl_event_source *ipc_source;
+	char ipc_path[108]; /* sun_path max */
+	struct wl_list ipc_clients; /* w3ld_ipc_client.link */
 
 	struct wlr_seat *seat;
 	struct wlr_cursor *cursor;
@@ -103,6 +111,22 @@ struct w3ld_window {
 	struct wl_listener destroy;
 };
 
+/* ------------------------------------------------------------------ keybind */
+
+struct w3ld_keybind {
+	struct wl_list link; /* w3ld_server.keybinds */
+	uint32_t modifiers;
+	xkb_keysym_t sym;
+	char *action; /* owned */
+};
+
+struct w3ld_ipc_client {
+	struct wl_list link; /* w3ld_server.ipc_clients */
+	struct w3ld_server *server;
+	int fd;
+	struct wl_event_source *source;
+};
+
 /* ----------------------------------------------------------------- keyboard */
 
 struct w3ld_keyboard {
@@ -131,6 +155,29 @@ void w3ld_seat_setup (struct w3ld_server *server);
 
 void w3ld_arrange (struct w3ld_server *server);
 void w3ld_spawn (const char *command);
+
+/* bindings + IPC */
+void w3ld_binding_setup (struct w3ld_server *server);
+bool w3ld_binding_add (
+	struct w3ld_server *server,
+	const char *combo,
+	const char *action
+);
+bool w3ld_binding_remove (
+	struct w3ld_server *server,
+	const char *combo
+);
+bool w3ld_binding_run (
+	struct w3ld_server *server,
+	uint32_t modifiers,
+	xkb_keysym_t sym
+);
+void w3ld_action_run (
+	struct w3ld_server *server,
+	const char *action
+);
+void w3ld_ipc_setup (struct w3ld_server *server);
+void w3ld_config_run (struct w3ld_server *server);
 
 /* focus */
 void w3ld_focus_window (struct w3ld_window *window);

@@ -92,6 +92,7 @@ int main (
 	w3ld_window_setup(&server);
 	w3ld_decoration_setup(&server);
 	w3ld_seat_setup(&server);
+	w3ld_binding_setup(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);
 	if (!socket) {
@@ -109,6 +110,9 @@ int main (
 
 	setenv("WAYLAND_DISPLAY", socket, true);
 	LOG("running on WAYLAND_DISPLAY=%s", socket);
+
+	w3ld_ipc_setup(&server);
+	w3ld_config_run(&server);
 
 	wl_display_run(server.display);
 

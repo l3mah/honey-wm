@@ -24,7 +24,7 @@ LDLIBS    = $(PKG_LIBS)
 SRCS = $(wildcard src/*.c)
 OBJS = $(SRCS:src/%.c=build/%.o)
 
-all: w3ld
+all: w3ld w3ldctl
 
 build/%.o: src/%.c | build
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -32,13 +32,22 @@ build/%.o: src/%.c | build
 w3ld: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
+# w3ldctl is a standalone unix-socket client — no wlroots/wayland linkage.
+w3ldctl: w3ldctl.c
+	$(CC) -std=c11 -D_GNU_SOURCE -Wall -Wextra -o $@ $<
+
 # Header dependencies (-MMD) so editing a header recompiles every affected .o.
 -include $(wildcard build/*.d)
 
 build:
 	mkdir -p build
 
-clean:
-	rm -rf build w3ld
+PREFIX ?= $(HOME)/.local
+install: all
+	install -Dm755 w3ld    $(DESTDIR)$(PREFIX)/bin/w3ld
+	install -Dm755 w3ldctl $(DESTDIR)$(PREFIX)/bin/w3ldctl
 
-.PHONY: all clean
+clean:
+	rm -rf build w3ld w3ldctl
+
+.PHONY: all install clean
