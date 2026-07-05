@@ -1,0 +1,44 @@
+# w3ld — a tiling Wayland compositor on wlroots 0.20.
+#
+# The dev toolchain is not in the profile on this Nix host; build inside an
+# ephemeral shell:
+#
+#   nix-shell -p wlroots wayland wayland-protocols wayland-scanner libxkbcommon \
+#     pixman libinput libdrm pkg-config gcc gnumake --run make
+#
+# wlroots is the 0.20.1 nix attr (pkg-config name wlroots-0.20), matching river.
+
+CC       ?= cc
+PKGS      = wlroots-0.20 wayland-server xkbcommon pixman-1 libinput
+PKG_CFLAGS = $(shell pkg-config --cflags $(PKGS))
+PKG_LIBS   = $(shell pkg-config --libs $(PKGS))
+
+CFLAGS   ?= -g -Og
+CFLAGS   += -std=c11 -D_GNU_SOURCE -DWLR_USE_UNSTABLE \
+            -Wall -Wextra -Wpedantic -Wno-unused-parameter \
+            -Wno-missing-field-initializers \
+            -MMD -MP \
+            -Isrc $(PKG_CFLAGS)
+LDLIBS    = $(PKG_LIBS)
+
+SRCS = $(wildcard src/*.c)
+OBJS = $(SRCS:src/%.c=build/%.o)
+
+all: w3ld
+
+build/%.o: src/%.c | build
+	$(CC) $(CFLAGS) -c $< -o $@
+
+w3ld: $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
+
+# Header dependencies (-MMD) so editing a header recompiles every affected .o.
+-include $(wildcard build/*.d)
+
+build:
+	mkdir -p build
+
+clean:
+	rm -rf build w3ld
+
+.PHONY: all clean

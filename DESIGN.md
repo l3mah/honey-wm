@@ -1,168 +1,172 @@
 # w3ld-wm — design & plan
 
 **w3ld** (weld / "wwm") is a tiling Wayland **compositor** built directly on
-**wlroots**, succeeding [lakewm](https://github.com/l3mah/lakewm). lakewm was a
-*client* of the river compositor (it spoke `river-window-management-v1`); w3ld
-**is** the compositor. Same window-management philosophy (Hyprland-style
-master-stack, unlimited per-monitor workspaces, dynamic config), but with no
-dependency on river and no ceiling on what the WM can control.
+**wlroots 0.20**, succeeding [lakewm](https://github.com/l3mah/lakewm). lakewm was
+a *client* of the river compositor (it spoke `river-window-management-v1`); w3ld
+**is** the compositor. Same window-management brain, no river dependency, no
+ceiling on what the WM can control.
 
-lakewm stays intact and frozen as a working river WM. w3ld is a fresh repo that
-reuses lakewm's policy code, borrows dwl's compositor plumbing, and adds modern
-wlroots managers river couldn't give us.
+## The five goals
 
-## Why leave river
+1. **Migrate lakewm from a river WM to a full wlroots compositor.** Same policy
+   brain, new foundation. lakewm stays intact and frozen as a working river WM.
+2. **Simple, clean, DRY, efficient, unbloated — dwl-style.** One `w3ld.h` header
+   + one `w3ld_server`, the existing module split, a minimal protocol set, no
+   effects at first.
+3. **Modern wlroots (0.20).** Pinned; nix `wlroots` attr = 0.20.1, matching
+   river's link. pkg-config name `wlroots-0.20`.
+4. **Retain every lakewm feature, then expand — decorations first.** Full parity
+   with lakewm's surface (§4), then the GTK decoration fix and the other things
+   river structurally forbade.
+5. **Everything stateless.** No stateful layouts (no dwindle tree). This is the
+   main anti-spaghetti lever — see §3.
 
-lakewm was a privileged client of river. river did rendering, input, DRM/KMS,
-XWayland, and all protocol implementations; lakewm decided policy via the
-`river-window-management-v1` family. That split has a hard ceiling — things
-**structurally impossible** for a river client that become trivial for a
-compositor:
+## Why leave river (the trigger)
 
-- **Decorations:** river only advertises `xdg-decoration`; GTK/older-Qt speak
-  only `org_kde_kwin_server_decoration` (verified: GTK3/4 link only the KDE
-  protocol; alacritty links xdg-decoration). A river client cannot advertise a
-  Wayland global, so GTK apps always draw CSD headerbars. A compositor advertises
-  **both** decoration managers — one line — and it's solved.
-- **Standard bars:** a river client cannot serve `ext-workspace` /
-  `wlr-foreign-toplevel`, so waybar's native workspace/taskbar modules never
-  worked (needed the custom `lakectl subscribe` stream + lakewm-waybar). A
-  compositor implements these → standard bars just work.
-- **Native output config:** lakewm shelled out to `wlr-randr`. A compositor does
-  `wlr-output-management` natively.
-- **Effects & input reach:** rounding/opacity/blur/shadow, resize-on-border,
-  scroll-to-switch, gamma control, tearing — all reachable only by owning
-  rendering and input.
+Diagnosed definitively: GTK3 **and GTK4** link *only*
+`org_kde_kwin_server_decoration_manager` (the KDE protocol); alacritty links
+`zxdg_decoration_manager_v1`. river 0.4.5 advertises *only* xdg-decoration, so
+GTK apps can never get SSD → they draw their own headerbar. A river **client**
+cannot advertise a Wayland global, so lakewm cannot fix it. Patching river was
+rejected (breaks the "drop-in WM for stock river" shipping story). Becoming the
+compositor solves it in one line — advertise **both** decoration managers. The
+same client ceiling blocks standard bars, native output config, gamma, tearing,
+effects. See the `river-ceiling` memory for the full diagnosis.
 
-The LOC math also favors it: lakewm is ~6k LOC, of which a large slice is pure
-"talk to river" overhead (input config reimplemented as a protocol client, the
-double-buffered manage/render dance, shadow state). dwl is a *full* tiling
-compositor in ~2.5k. Sitting on river is **not** free — the river tax ≈ the
-compositor plumbing dwl writes. We pay a comparable amount either way; as a
-compositor we get control, at the cost of owning DRM/session/XWayland.
+## 3. Architecture — how it stays clean
 
-## Architecture
+- **`wlr_scene` for all rendering.** Windows are scene trees; borders are
+  `wlr_scene_rect`; z-order is a fixed array of scene-tree layers (dwl pattern:
+  background / bottom / tiled / floating / top / overlay / fullscreen / lock). No
+  hand-rolled render loop or damage tracking.
+- **Single source of truth.** The `wlr_xdg_toplevel` / `wlr_output` *is* the
+  state. No shadow copies, no resync. This is the rule that prevents state drift.
+- **Event-driven.** `wl_listener` signals (`new_xdg_toplevel`, `map`, `commit`,
+  `new_output`, `new_input`, cursor motion) call policy synchronously. The
+  `manage_start`/`render_start` double-buffer dance is **deleted**.
+- **Stateless layouts only.** Every layout is a pure function of
+  `(ordered window list + params)`. The layout interface is **just
+  `arrange(ctx)`** — no `void *layout_data`, no `on_add`/`on_remove`/`on_swap`/
+  `on_drop` lifecycle hooks, no per-workspace tree. master/spiral/grid all fit
+  one contract; swap/drop/next/prev come free. A stateful dwindle tree is
+  explicitly **out of scope**.
+- **Pure-IPC config.** The `w3ldctl` command language *is* the config language.
+  No compile-time `config.h`, no config-file format, no reload — the `init` file
+  is just a shell script of `w3ldctl` calls that apply as-is.
 
-- **wlroots (target 0.19/0.20 — pin via nix; river links 0.20.1).** Build in a
-  nix-shell like lakewm.
-- **`wlr_scene` for all rendering.** No hand-rolled render loop / damage
-  tracking. Windows are scene trees; borders are `wlr_scene_rect`; z-order is a
-  fixed array of scene-tree layers (dwl pattern: background / bottom / tiled /
-  floating / top / overlay / fullscreen / lock).
-- **Single source of truth, event-driven.** The `wlr_xdg_toplevel` /
-  `wlr_output` *is* the state — no shadow copies, no resync. `wl_listener`
-  signals (`new_xdg_toplevel`, `map`, `commit`, `new_output`, `new_input`,
-  cursor motion, …) call policy synchronously. The `manage_start`/`render_start`
-  double-buffer orchestration is gone.
-- **Clean module split preserved** (lakewm's is good): policy modules port; new
-  thin wlroots-glue modules added.
+## 4. Port / donate / new
 
-## Module map — port / donate / new
+### FROM lakewm — port near-verbatim (policy brain; compositor-agnostic)
+Output into `wlr_scene` node positions instead of river `propose_dimensions`.
 
-**Port from lakewm (the crown jewels — reuse in spirit, output into scene nodes
-instead of `propose_dimensions`):**
-- `layout.c` — pluggable stateless layouts (master / spiral / grid). Best-in-
-  class; keep the registry + `arrange(ctx)` interface.
-- `workspace.c` — per-output, unlimited, `output:N`-addressable workspaces. Do
-  NOT adopt dwl's dwm-tags model.
-- `action.c` — action handlers (focus/swap/workspace/dir/move/…).
-- `binding.c` — keysym parsing (drop the per-seat river-object reconciliation;
-  use `wlr_keyboard` directly).
-- `config.c` — defaults + effective-value resolution.
-- `ipc.c` + `w3ldctl.c` + `status.c` — runtime control socket, live reconfig,
-  JSON status stream (the big advantage over dwl's compile-time `config.h`).
-  Keep the `subscribe` schema (`v:1`) so w3ld-waybar reuses it.
-- window rules (`apply_rules`).
+- `layout.c` (~400) — stateless registry + `arrange(ctx)` driver; master / spiral
+  / grid. Params namespaced `master-mfact`/`-nmaster`/`-orientation`,
+  `spiral-ratio`/`-first-split`, `grid-columns`.
+- `workspace.c` (~60) — per-output, unlimited, `output:N`-addressable workspaces
+  (NOT dwm tags); `parse_ws_addr`, `prev_ws` for `workspace-back`.
+- `action.c` (~500) — every action handler.
+- `binding.c` (~450) — keysym + modifier/button token parsing; keybind +
+  pointer-bind lists. Drop the per-seat river-object reconciliation → use
+  `wlr_keyboard` directly.
+- `config.c` (~70) — defaults + `has_<key>` effective-value resolution.
+- `ipc.c` + `w3ldctl.c` + `status.c` (~1200) — runtime control socket, command
+  parser, and the `subscribe` JSON-Lines stream (schema **v:1** — keep identical
+  so w3ld-waybar reuses it).
+- window rules (`apply_rules`) — `app-id`/`title`/`initial-title` (+`-re`) →
+  `workspace`/`float [W H]`/`tile`/`suppress-maximize`/`no-focus`; replace-on-
+  same-match; new-windows-only.
+- The whole data model + the locked code style.
 
-**Donate from dwl (read + borrow; don't fork wholesale — its suckless/tags/
-compile-time philosophy clashes with ours):**
-- The `setup()` bootstrap sequence (backend → renderer → allocator → compositor
-  → scene → managers → loop).
+### DONATE from dwl — read + borrow, don't fork wholesale
+- The `setup()` bootstrap sequence.
 - The scene-layer array for z-ordering.
-- **XWayland `xwm` glue** — the #1 donation; do not reinvent.
+- **XWayland `xwm` glue** — #1 donation, do not reinvent.
 - Hard-won correctness fixes: focus-stealing, unmanaged/override-redirect X
   surfaces, activation/urgency, cursor-warp quirks, output hotplug races.
 
-**Net-new thin wlroots glue:**
-- `main.c` — wlroots init (backend/renderer/allocator/scene) + event loop.
-- `output.c` — `wlr_output` + `wlr_output_layout` + `wlr_scene_output`.
+### NET-NEW wlroots glue — replaces the river tax
+- `main.c` — wlroots init + event loop.
 - `window.c` — `wlr_xdg_toplevel` (+ popups) lifecycle.
-- `seat.c` — `wlr_seat` + `wlr_cursor` + focus.
-- `input.c` — `new_input`; configure libinput **directly**
-  (`libinput_device_config_*`) — deletes lakewm's ~700-line protocol-client
-  layer. Build xkb keymaps directly (already do this).
-- `decoration.c` — advertise `xdg-decoration` **and**
-  `wlr_server_decoration_manager` (default server mode) → GTK problem solved.
-- `layer.c` — implement `wlr_layer_shell_v1` (scene layers + exclusive zones);
-  cleaner than the river-layer-shell client dance.
-- `xwayland.c` — `wlr_xwayland` + xwm.
+- `output.c` — `wlr_output` + `wlr_output_layout` + `wlr_scene_output`.
+- `seat.c` — `wlr_seat` + `wlr_cursor` + focus + pointer ops.
+- `input.c` — `new_input` + `libinput_device_config_*` **directly** (deletes
+  lakewm's ~740-line protocol-client `input.c`). xkb keymap building stays.
+- `decoration.c` — advertise `xdg-decoration` AND `wlr_server_decoration_manager`
+  (default server) → GTK fixed. The motivating module.
+- `layer.c` — implement `wlr_layer_shell_v1` (scene layers + exclusive zones).
+- `xwayland.c` — `wlr_xwayland` + the donated `xwm`.
+- `output-mgmt.c` — server side of `wlr-output-management-v1`: native in-process
+  output config **and** makes `wlr-randr`/`kanshi` work against w3ld.
+- foreign-toplevel + ext-workspace — `wlr_foreign_toplevel_management` +
+  `ext-workspace` so stock waybar/taskbar modules work natively (additive to the
+  own `subscribe` stream; the titlebar issue is unrelated to bars).
 
-## Protocol / manager global checklist
-
-Most are one-liner `*_create()` calls in `setup()`. Being a good-citizen
-compositor is where w3ld beats both lakewm and vanilla dwl.
-
-Essential: `xdg_shell`, `layer_shell`, `xdg_decoration` + `kde_server_decoration`,
-`xdg_output`, `output_manager` + `output_configuration`, `data_device` +
-`primary_selection` + `data_control` (clipboard managers), `xdg_activation`,
+Plus manager one-liners in `setup()`, added as needed: `xdg_shell`, `xdg_output`,
+`data_device`/`primary_selection`/`data_control`, `xdg_activation`,
 `presentation_time`, `viewporter`, `fractional_scale`, `cursor_shape`,
-`relative_pointer` + `pointer_constraints`, `virtual_pointer` + `virtual_keyboard`.
+`relative_pointer`/`pointer_constraints`, `gamma_control`, `session_lock`,
+`screencopy`, `tearing_control`, `input_method`/`text_input`.
 
-Ecosystem wins (impossible under river): `wlr_foreign_toplevel_management` +
-`ext_workspace` (standard bars/taskbars), `wlr_gamma_control` (night light — drop
-hyprsunset), `session_lock` (swaylock), `screencopy` + `export_dmabuf` /
-`ext_image_copy_capture` (screenshots/screenshare), `tearing_control` (native
-allow-tearing), `input_method` + `text_input` (fcitx/IME), `security_context`,
-`content_type`, `alpha_modifier`, `single_pixel_buffer`, `drm_lease` (VR).
+### DELETED — the river tax (not ported)
+- `input.c` ~740 (protocol-client config) → direct libinput.
+- `wm.c` manage/render double-buffer → gone (event-driven).
+- `window.c`/`output.c`/`seat.c` `river_*_v1` lifecycle + shadow state.
 
-Optional later: effects (rounded corners / opacity / blur / shadow) via custom
-scene buffers + shaders — SwayFX is the reference. **Ship without effects
-first.**
+### EXPANDS — ported code gains reach as the compositor
+decorations (the fix); scroll-to-switch (axis events); resize-on-border (pointer-
+in-window); XWayland `force_zero_scaling`. Effects possible but deferred.
+
+## 5. Bars / IPC — unchanged
+
+The `w3ldctl` socket and the `subscribe` JSON stream are w3ld's own protocol —
+nothing to do with river or wlroots. They port over unchanged; w3ld-waybar keeps
+consuming the same v1 schema. Being a compositor only *adds* the option to also
+serve `ext-workspace`/`foreign-toplevel` for stock bars (approved — additive).
+The GTK decoration issue is separate from waybar.
 
 ## Milestones
 
-- **M0** — repo scaffold: Makefile (nix-shell wlroots pkg-config), `main.c`
-  bootstrap, empty module stubs, compiles + runs an empty compositor (nested +
-  headless).
-- **M1** — one output, `xdg_shell`, `wlr_scene`, master layout, keybinds,
-  cursor. Smoke-test: spawn a terminal, it tiles; Super+Return works.
+- **M0** — scaffold: Makefile (nix-shell wlroots-0.20), `main.c` bootstrap
+  (backend → renderer → allocator → `wlr_scene` → loop), empty module stubs;
+  compiles + runs an empty compositor (nested + headless).
+- **M1** — one output, `xdg_shell`, `wlr_scene`, master layout, keybinds, cursor.
 - **M2** — workspaces + multi-monitor + `wlr_output_layout` + native output
-  config (kill wlr-randr). Port `workspace.c`/`action.c`.
-- **M3** — layer-shell (bars/wallpaper) + decorations (both protocols) + input
-  config (libinput direct) + IPC/`w3ldctl`/status + config `init`.
-- **M4** — XWayland + `foreign-toplevel` + `ext-workspace` + the manager long-
-  tail (gamma, session-lock, screencopy, activation, clipboard).
-- **M5** — polish; port rules, floating/fullscreen/maximize, pointer drag,
-  drop-at-cursor; optional effects.
+  config (+ `wlr-output-management` server for wlr-randr/kanshi).
+- **M3** — layer-shell + decorations (both protocols) + input (libinput direct) +
+  IPC/`w3ldctl`/status + config init.
+- **M4** — XWayland + foreign-toplevel + ext-workspace + manager long-tail (gamma,
+  session-lock, screencopy, activation, clipboard).
+- **M5** — polish: rules, floating/fullscreen/maximize/fake-fullscreen, pointer
+  drag, drop-at-cursor, spiral/grid; scroll-to-switch, resize-on-border.
+- **M6 (optional)** — effects.
 
 ## Conventions
 
-- **Code style = lakewm's (carry over exactly):** factual comments (no
-  first-person, no phase tags), explicit names, function defs `name (` space
-  before paren, INLINE for 0–1 params, MULTI-LINE (one param per line, no
-  trailing comma) for 2+, `) {` on its own line; section-banner comments; DRY.
-- **Build:** nix-shell (wlroots, wayland, wayland-protocols, libxkbcommon,
-  pixman, libinput, libdrm, pkg-config, gcc, gnumake, + xcb/xwayland for XWM).
-  Plain Makefile; `wayland-scanner` for any custom protocol (probably none).
-- **Headless test harness** (from lakewm): `WLR_BACKENDS=headless
-  WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1`; short
-  `XDG_RUNTIME_DIR` (<108-byte sun_path); kill test compositor by EXACT PID,
-  never `pkill -f`.
-- **Names:** compositor binary `w3ld`; control client `w3ldctl`; config
-  `~/.config/w3ld/init` (shell script of `w3ldctl` calls); socket
-  `$XDG_RUNTIME_DIR/w3ld-$WAYLAND_DISPLAY.sock`; bar consumer `w3ld-waybar`.
-- **Commits:** no Claude co-author trailer.
+- **Code style = lakewm's (verbatim):** factual comments (no first-person, no
+  phase tags), explicit names, `name (` space before paren, INLINE for 0–1
+  params, MULTI-LINE (one param per line, no trailing comma) for 2+, `) {` on its
+  own line; section-banner comments; DRY.
+- **Build:** nix-shell (wlroots 0.20, wayland, wayland-protocols, wayland-scanner,
+  libxkbcommon, pixman, libinput, libdrm, pkg-config, gcc, gnumake, + xcb/xwayland
+  for XWM). Plain Makefile.
+- **Headless test:** `WLR_BACKENDS=headless WLR_RENDERER=pixman
+  WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1`; short `XDG_RUNTIME_DIR`
+  (<108-byte sun_path); kill test compositor by EXACT PID, never `pkill -f`.
+- **Names:** binary `w3ld`; control client `w3ldctl`; config `~/.config/w3ld/init`
+  (shell script of `w3ldctl` calls); socket `$XDG_RUNTIME_DIR/w3ld-$WAYLAND_DISPLAY.sock`;
+  bar consumer `w3ld-waybar`.
+- **Commits:** no Claude co-author trailer; author `Maxence Hamel
+  <maxence.hc@gmail.com>`.
 
 ## Non-goals (initially)
 
-Effects (defer), a config-file format (runtime IPC is the config, like lakewm),
-dwm-tags (use workspaces), Xorg support (Wayland + XWayland only).
+Effects (defer), a config-file format (runtime IPC is the config), dwm-tags (use
+workspaces), stateful layouts (dwindle tree), Xorg (Wayland + XWayland only).
 
 ## References
 
-- lakewm (`../../lakewm` / github.com/l3mah/lakewm) — policy code + the
-  `subscribe` schema + lakewm-waybar (rename → w3ld-waybar).
+- lakewm (`../../lakewm`) — policy code + the `subscribe` schema + lakewm-waybar
+  (→ w3ld-waybar).
 - dwl (codeberg.org/dwl/dwl) — compositor skeleton, scene layers, XWayland.
 - tinywl (wlroots reference) — minimal `wlr_scene` bootstrap.
-- sway / river — protocol wiring references.
 - wlroots 0.20 headers — the API of record.
