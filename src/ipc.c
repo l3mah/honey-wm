@@ -55,6 +55,26 @@ static void dispatch (
 		return;
 	}
 
+	if (!strncmp(line, "set ", 4)) {
+		char *rest = line + 4;
+		while (*rest == ' ')
+			rest++;
+		char *space = strchr(rest, ' ');
+		if (!space) {
+			snprintf(reply, reply_size, "error: usage: set <key> <value>");
+			return;
+		}
+		*space = '\0';
+		char *value = space + 1;
+		while (*value == ' ')
+			value++;
+		if (w3ld_config_set(server, rest, value))
+			snprintf(reply, reply_size, "ok");
+		else
+			snprintf(reply, reply_size, "error: bad set '%s'", rest);
+		return;
+	}
+
 	if (!strcmp(line, "ping")) {
 		snprintf(reply, reply_size, "pong");
 		return;

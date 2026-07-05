@@ -28,6 +28,39 @@ enum w3ld_direction {
 	W3LD_DIR_DOWN,
 };
 
+enum w3ld_orientation {
+	W3LD_ORIENT_LEFT,   /* master column on the left, stack on the right */
+	W3LD_ORIENT_RIGHT,
+	W3LD_ORIENT_TOP,    /* master row on top, stack below */
+	W3LD_ORIENT_BOTTOM,
+};
+
+/* ------------------------------------------------------------------- config */
+
+struct w3ld_config {
+	/* master layout */
+	double master_mfact;
+	int master_nmaster;
+	enum w3ld_orientation master_orientation;
+	/* gaps (global) */
+	int gaps_in;
+	int gaps_out;
+	bool smart_gaps;
+	/* appearance */
+	int border_size;
+	uint32_t border_color_active;   /* 0xRRGGBBAA */
+	uint32_t border_color_inactive;
+	double float_width;
+	double float_height;
+	/* behavior */
+	bool follow_mouse;
+	bool mouse_follows_focus;
+	bool new_window_master;
+	bool focus_new;
+	bool mouse_focus_new;
+	bool exit_fullscreen_on_new;
+};
+
 /* ------------------------------------------------------------------- server */
 
 struct w3ld_server {
@@ -56,8 +89,7 @@ struct w3ld_server {
 	struct wl_list windows; /* w3ld_window.link — tiling/stack order */
 	struct w3ld_window *focused;
 
-	bool follow_mouse; /* pointer selects the active window/output */
-	bool mouse_follows_focus; /* warp cursor to focus on keyboard focus moves */
+	struct w3ld_config config;
 
 	struct wl_list keybinds; /* w3ld_keybind.link */
 
@@ -165,6 +197,14 @@ void w3ld_seat_setup (struct w3ld_server *server);
 
 void w3ld_arrange (struct w3ld_server *server);
 void w3ld_spawn (const char *command);
+
+/* config */
+void w3ld_config_defaults (struct w3ld_config *config);
+bool w3ld_config_set (
+	struct w3ld_server *server,
+	const char *key,
+	const char *value
+);
 
 /* bindings + IPC */
 void w3ld_binding_setup (struct w3ld_server *server);

@@ -55,8 +55,7 @@ int main (
 	signal(SIGCHLD, SIG_IGN); /* reap spawned children automatically */
 
 	struct w3ld_server server = {0};
-	server.follow_mouse = true;
-	server.mouse_follows_focus = true;
+	w3ld_config_defaults(&server.config);
 
 	server.display = wl_display_create();
 	server.event_loop = wl_display_get_event_loop(server.display);

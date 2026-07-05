@@ -67,10 +67,18 @@ static void window_map (
 
 	window->mapped = true;
 	window->workspace = server->focused_output->active;
-	wl_list_insert(&server->windows, &window->link);
+	if (server->config.new_window_master)
+		wl_list_insert(&server->windows, &window->link);       /* master */
+	else
+		wl_list_insert(server->windows.prev, &window->link);   /* stack tail */
 
 	w3ld_arrange(server);
-	w3ld_focus_window(window);
+	if (server->config.focus_new)
+		w3ld_focus_window(window);
+	if (server->config.mouse_focus_new)
+		wlr_cursor_warp(server->cursor, NULL,
+				window->geom.x + window->geom.width / 2,
+				window->geom.y + window->geom.height / 2);
 }
 
 static void window_unmap (

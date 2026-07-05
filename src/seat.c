@@ -137,7 +137,7 @@ static void new_keyboard (
 /* Warp the cursor to the focused window (or focused output) center on
  * keyboard-driven focus moves, when mouse-follows-focus is enabled. */
 void w3ld_warp_to_focus (struct w3ld_server *server) {
-	if (!server->mouse_follows_focus)
+	if (!server->config.mouse_follows_focus)
 		return;
 	int x, y;
 	if (server->focused) {
@@ -184,7 +184,7 @@ static void pointer_focus (
 		window = window_from_node(node);
 	}
 
-	if (server->follow_mouse) {
+	if (server->config.follow_mouse) {
 		if (window) {
 			w3ld_focus_window(window);
 		} else {
