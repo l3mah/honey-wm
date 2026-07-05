@@ -88,6 +88,7 @@ int main (
 			server.output_layout);
 
 	w3ld_output_setup(&server);
+	w3ld_output_manager_setup(&server);
 	w3ld_window_setup(&server);
 	w3ld_seat_setup(&server);
 

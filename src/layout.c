@@ -39,6 +39,8 @@ static int count_tiled (struct w3ld_workspace *workspace) {
 /* --------------------------------------------------------------- master-stack */
 
 static void arrange_output (struct w3ld_output *output) {
+	if (!output->active)
+		return; /* set after the output is added to the layout */
 	int window_count = count_tiled(output->active);
 	if (window_count == 0)
 		return;

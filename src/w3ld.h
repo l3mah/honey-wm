@@ -37,6 +37,11 @@ struct w3ld_server {
 	struct wl_listener new_output;
 	struct w3ld_output *focused_output;
 
+	struct wlr_output_manager_v1 *output_manager;
+	struct wl_listener output_manager_apply;
+	struct wl_listener output_manager_test;
+	struct wl_listener output_layout_change;
+
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
 	struct wl_list windows; /* w3ld_window.link — tiling/stack order */
@@ -119,6 +124,7 @@ void w3ld_dbg (const char *format, ...);
 /* ------------------------------------------------------------------- modules */
 
 void w3ld_output_setup (struct w3ld_server *server);
+void w3ld_output_manager_setup (struct w3ld_server *server);
 void w3ld_window_setup (struct w3ld_server *server);
 void w3ld_seat_setup (struct w3ld_server *server);
 
