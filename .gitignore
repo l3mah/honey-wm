@@ -1,0 +1,4 @@
+/build/
+*.o
+/w3ld
+/w3ldctl
