@@ -166,8 +166,10 @@ static void load_default_bindings (struct w3ld_server *server) {
 	w3ld_binding_add(server, "super+j", "focus-next");
 	w3ld_binding_add(server, "super+k", "focus-prev");
 	w3ld_binding_add(server, "super+Tab", "workspace-back");
-	w3ld_binding_add(server, "super+Left", "focus-output left");
-	w3ld_binding_add(server, "super+Right", "focus-output right");
+	w3ld_binding_add(server, "super+Left", "focus-dir left");
+	w3ld_binding_add(server, "super+Right", "focus-dir right");
+	w3ld_binding_add(server, "super+Up", "focus-dir up");
+	w3ld_binding_add(server, "super+Down", "focus-dir down");
 	w3ld_binding_add(server, "super+shift+Left", "move-to-output left");
 	w3ld_binding_add(server, "super+shift+Right", "move-to-output right");
 	w3ld_binding_add(server, "super+shift+e", "exit");

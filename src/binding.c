@@ -125,10 +125,16 @@ bool w3ld_binding_run (
 
 /* ------------------------------------------------------------- action string */
 
-static int parse_direction (const char *arg) {
-	if (arg && (!strcasecmp(arg, "left") || !strcasecmp(arg, "prev")))
-		return -1;
-	return +1;
+static enum w3ld_direction parse_direction (const char *arg) {
+	if (arg) {
+		if (!strcasecmp(arg, "right"))
+			return W3LD_DIR_RIGHT;
+		if (!strcasecmp(arg, "up"))
+			return W3LD_DIR_UP;
+		if (!strcasecmp(arg, "down"))
+			return W3LD_DIR_DOWN;
+	}
+	return W3LD_DIR_LEFT;
 }
 
 void w3ld_action_run (
@@ -174,8 +180,8 @@ void w3ld_action_run (
 		w3ld_action_workspace_cycle(server, +1);
 	} else if (!strcmp(verb, "workspace-prev")) {
 		w3ld_action_workspace_cycle(server, -1);
-	} else if (!strcmp(verb, "focus-output")) {
-		w3ld_action_focus_output(server, parse_direction(arg));
+	} else if (!strcmp(verb, "focus-dir")) {
+		w3ld_action_focus_dir(server, parse_direction(arg));
 	} else if (!strcmp(verb, "move-to-output")) {
 		w3ld_action_move_to_output(server, parse_direction(arg));
 	} else {

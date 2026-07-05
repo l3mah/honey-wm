@@ -21,6 +21,13 @@
 
 struct w3ld_workspace;
 
+enum w3ld_direction {
+	W3LD_DIR_LEFT,
+	W3LD_DIR_RIGHT,
+	W3LD_DIR_UP,
+	W3LD_DIR_DOWN,
+};
+
 /* ------------------------------------------------------------------- server */
 
 struct w3ld_server {
@@ -48,6 +55,9 @@ struct w3ld_server {
 	struct wl_listener new_toplevel_decoration;
 	struct wl_list windows; /* w3ld_window.link — tiling/stack order */
 	struct w3ld_window *focused;
+
+	bool follow_mouse; /* pointer selects the active window/output */
+	bool mouse_follows_focus; /* warp cursor to focus on keyboard focus moves */
 
 	struct wl_list keybinds; /* w3ld_keybind.link */
 
@@ -189,10 +199,16 @@ struct w3ld_workspace *w3ld_workspace_get (
 	int number
 );
 struct w3ld_window *w3ld_workspace_first_window (struct w3ld_workspace *workspace);
-struct w3ld_output *w3ld_output_adjacent (
+struct w3ld_output *w3ld_output_in_direction (
 	struct w3ld_output *from,
-	int direction
+	enum w3ld_direction direction
 );
+struct w3ld_output *w3ld_output_at (
+	struct w3ld_server *server,
+	double x,
+	double y
+);
+void w3ld_warp_to_focus (struct w3ld_server *server);
 
 /* actions (called by keybinds now, by IPC in M3) */
 void w3ld_action_close (struct w3ld_server *server);
@@ -213,13 +229,13 @@ void w3ld_action_workspace_cycle (
 	struct w3ld_server *server,
 	int direction
 );
-void w3ld_action_focus_output (
+void w3ld_action_focus_dir (
 	struct w3ld_server *server,
-	int direction
+	enum w3ld_direction direction
 );
 void w3ld_action_move_to_output (
 	struct w3ld_server *server,
-	int direction
+	enum w3ld_direction direction
 );
 
 /* Stubs filled in later milestones. */

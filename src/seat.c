@@ -134,13 +134,45 @@ static void new_keyboard (
 
 /* ------------------------------------------------------------------- cursor */
 
-/* Forward pointer focus to whatever surface is under the cursor. */
+/* Warp the cursor to the focused window (or focused output) center on
+ * keyboard-driven focus moves, when mouse-follows-focus is enabled. */
+void w3ld_warp_to_focus (struct w3ld_server *server) {
+	if (!server->mouse_follows_focus)
+		return;
+	int x, y;
+	if (server->focused) {
+		x = server->focused->geom.x + server->focused->geom.width / 2;
+		y = server->focused->geom.y + server->focused->geom.height / 2;
+	} else if (server->focused_output) {
+		x = server->focused_output->usable.x
+			+ server->focused_output->usable.width / 2;
+		y = server->focused_output->usable.y
+			+ server->focused_output->usable.height / 2;
+	} else {
+		return;
+	}
+	wlr_cursor_warp(server->cursor, NULL, x, y);
+}
+
+/* Climb the scene tree to the window that owns a node, or NULL. */
+static struct w3ld_window *window_from_node (struct wlr_scene_node *node) {
+	while (node) {
+		if (node->data)
+			return node->data;
+		node = node->parent ? &node->parent->node : NULL;
+	}
+	return NULL;
+}
+
+/* Forward pointer focus to the surface under the cursor; with follow-mouse on,
+ * also move keyboard focus to the window (or output) under the cursor. */
 static void pointer_focus (
 	struct w3ld_server *server,
 	uint32_t time_msec
 ) {
 	double sx, sy;
 	struct wlr_surface *surface = NULL;
+	struct w3ld_window *window = NULL;
 	struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node,
 			server->cursor->x, server->cursor->y, &sx, &sy);
 	if (node && node->type == WLR_SCENE_NODE_BUFFER) {
@@ -149,6 +181,18 @@ static void pointer_focus (
 			wlr_scene_surface_try_from_buffer(buffer);
 		if (scene_surface)
 			surface = scene_surface->surface;
+		window = window_from_node(node);
+	}
+
+	if (server->follow_mouse) {
+		if (window) {
+			w3ld_focus_window(window);
+		} else {
+			struct w3ld_output *output = w3ld_output_at(server,
+					server->cursor->x, server->cursor->y);
+			if (output)
+				server->focused_output = output;
+		}
 	}
 
 	if (surface) {

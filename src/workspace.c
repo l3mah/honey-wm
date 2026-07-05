@@ -43,24 +43,53 @@ struct w3ld_window *w3ld_workspace_first_window (struct w3ld_workspace *workspac
 	return NULL;
 }
 
-/* The output immediately left (direction < 0) or right (direction > 0) of
- * `from`, ordered by horizontal position, or NULL if there is none. */
-struct w3ld_output *w3ld_output_adjacent (
+/* The nearest output in a direction from `from`, scored by primary-axis
+ * distance plus a perpendicular-offset penalty, or NULL if there is none. */
+struct w3ld_output *w3ld_output_in_direction (
 	struct w3ld_output *from,
-	int direction
+	enum w3ld_direction direction
 ) {
+	int from_x = from->usable.x + from->usable.width / 2;
+	int from_y = from->usable.y + from->usable.height / 2;
+
 	struct w3ld_output *output;
 	struct w3ld_output *best = NULL;
+	long best_score = -1;
 	wl_list_for_each(output, &from->server->outputs, link) {
 		if (output == from)
 			continue;
-		if (direction > 0 && output->usable.x > from->usable.x) {
-			if (!best || output->usable.x < best->usable.x)
-				best = output;
-		} else if (direction < 0 && output->usable.x < from->usable.x) {
-			if (!best || output->usable.x > best->usable.x)
-				best = output;
+		int dx = (output->usable.x + output->usable.width / 2) - from_x;
+		int dy = (output->usable.y + output->usable.height / 2) - from_y;
+
+		long primary, secondary;
+		switch (direction) {
+		case W3LD_DIR_LEFT:  if (dx >= 0) continue; primary = -dx; secondary = labs(dy); break;
+		case W3LD_DIR_RIGHT: if (dx <= 0) continue; primary =  dx; secondary = labs(dy); break;
+		case W3LD_DIR_UP:    if (dy >= 0) continue; primary = -dy; secondary = labs(dx); break;
+		default:             if (dy <= 0) continue; primary =  dy; secondary = labs(dx); break;
+		}
+
+		long score = primary + secondary * 2;
+		if (best_score < 0 || score < best_score) {
+			best_score = score;
+			best = output;
 		}
 	}
 	return best;
+}
+
+/* The output whose usable box contains the point (x, y), or NULL. */
+struct w3ld_output *w3ld_output_at (
+	struct w3ld_server *server,
+	double x,
+	double y
+) {
+	struct w3ld_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		struct wlr_box *box = &output->usable;
+		if (x >= box->x && x < box->x + box->width
+				&& y >= box->y && y < box->y + box->height)
+			return output;
+	}
+	return NULL;
 }
