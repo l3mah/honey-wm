@@ -1,8 +1,10 @@
 /* Output management.
  *
  * Each wlr_output is enabled at its preferred mode, added to the output layout,
- * and given a wlr_scene_output that composites the scene graph onto it every
- * frame.
+ * given a wlr_scene_output that composites the scene every frame, and seeded
+ * with workspace 1. Its usable box is the layout geometry (layer-shell will
+ * reserve exclusive zones in M3). Removal reassigns the output's windows to a
+ * surviving output.
  */
 #include <stdlib.h>
 #include <time.h>
@@ -31,10 +33,42 @@ static void output_destroy (
 	void *data
 ) {
 	struct w3ld_output *output = wl_container_of(listener, output, destroy);
+	struct w3ld_server *server = output->server;
+
+	struct w3ld_output *other;
+	struct w3ld_output *fallback = NULL;
+	wl_list_for_each(other, &server->outputs, link) {
+		if (other != output) {
+			fallback = other;
+			break;
+		}
+	}
+
+	struct w3ld_window *window;
+	wl_list_for_each(window, &server->windows, link) {
+		if (window->workspace && window->workspace->output == output)
+			window->workspace = fallback ? fallback->active : NULL;
+	}
+	if (server->focused_output == output)
+		server->focused_output = fallback;
+
+	struct w3ld_workspace *workspace, *tmp;
+	wl_list_for_each_safe(workspace, tmp, &output->workspaces, link) {
+		wl_list_remove(&workspace->link);
+		free(workspace);
+	}
+
 	wl_list_remove(&output->frame.link);
 	wl_list_remove(&output->destroy.link);
 	wl_list_remove(&output->link);
 	free(output);
+
+	if (fallback) {
+		w3ld_arrange(server);
+		w3ld_focus_output_active(fallback);
+	} else {
+		server->focused = NULL;
+	}
 }
 
 /* --------------------------------------------------------------- new outputs */
@@ -60,6 +94,7 @@ static void handle_new_output (
 	struct w3ld_output *output = calloc(1, sizeof *output);
 	output->server = server;
 	output->wlr_output = wlr_output;
+	wl_list_init(&output->workspaces);
 
 	output->frame.notify = output_frame;
 	wl_signal_add(&wlr_output->events.frame, &output->frame);
@@ -75,7 +110,16 @@ static void handle_new_output (
 	wlr_scene_output_layout_add_output(server->scene_layout, layout_output,
 			scene_output);
 
-	LOG("new output %s", wlr_output->name);
+	wlr_output_layout_get_box(server->output_layout, wlr_output,
+			&output->usable);
+
+	output->active = w3ld_workspace_get(output, 1);
+	if (!server->focused_output)
+		server->focused_output = output;
+
+	LOG("new output %s %dx%d at %d,%d", wlr_output->name,
+			output->usable.width, output->usable.height,
+			output->usable.x, output->usable.y);
 }
 
 /* -------------------------------------------------------------------- setup */

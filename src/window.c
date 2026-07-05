@@ -1,8 +1,9 @@
 /* Window (wlr_xdg_toplevel) lifecycle: creation, map/unmap, focus, teardown.
  *
- * Each toplevel gets a wlr_scene_tree. Membership of the server window list is
- * managed on map/unmap; the list order is the tiling order. Focus is a separate
- * pointer plus keyboard/activation state — it never reorders the tiling list.
+ * Each toplevel gets a wlr_scene_tree. On map a window joins its output's active
+ * workspace and the server window list (list order is tiling order). Focus is a
+ * separate pointer plus keyboard/activation state; it tracks the focused output
+ * and never reorders the tiling list.
  */
 #include <stdlib.h>
 
@@ -15,6 +16,7 @@ void w3ld_focus_window (struct w3ld_window *window) {
 		return;
 
 	struct w3ld_server *server = window->server;
+	server->focused_output = window->workspace->output;
 	if (server->focused == window)
 		return;
 
@@ -35,17 +37,23 @@ void w3ld_focus_window (struct w3ld_window *window) {
 	server->focused = window;
 }
 
-/* Focus the first mapped window, or clear focus if none remain. */
-static void focus_any (struct w3ld_server *server) {
-	struct w3ld_window *window;
-	wl_list_for_each(window, &server->windows, link) {
-		if (window->mapped) {
-			server->focused = NULL; /* force re-activation */
-			w3ld_focus_window(window);
-			return;
-		}
+/* Focus the first window on an output's active workspace, or clear focus. */
+void w3ld_focus_output_active (struct w3ld_output *output) {
+	struct w3ld_server *server = output->server;
+	server->focused_output = output;
+
+	struct w3ld_window *window = w3ld_workspace_first_window(output->active);
+	if (window) {
+		server->focused = NULL; /* force re-activation */
+		w3ld_focus_window(window);
+		return;
 	}
-	server->focused = NULL;
+
+	if (server->focused) {
+		wlr_xdg_toplevel_set_activated(server->focused->xdg_toplevel, false);
+		server->focused = NULL;
+	}
+	wlr_seat_keyboard_notify_clear_focus(server->seat);
 }
 
 /* ----------------------------------------------------------------- listeners */
@@ -55,9 +63,13 @@ static void window_map (
 	void *data
 ) {
 	struct w3ld_window *window = wl_container_of(listener, window, map);
+	struct w3ld_server *server = window->server;
+
 	window->mapped = true;
-	wl_list_insert(&window->server->windows, &window->link);
-	w3ld_arrange(window->server);
+	window->workspace = server->focused_output->active;
+	wl_list_insert(&server->windows, &window->link);
+
+	w3ld_arrange(server);
 	w3ld_focus_window(window);
 }
 
@@ -67,6 +79,8 @@ static void window_unmap (
 ) {
 	struct w3ld_window *window = wl_container_of(listener, window, unmap);
 	struct w3ld_server *server = window->server;
+	struct w3ld_output *output =
+		window->workspace ? window->workspace->output : server->focused_output;
 
 	window->mapped = false;
 	wl_list_remove(&window->link);
@@ -74,8 +88,8 @@ static void window_unmap (
 		server->focused = NULL;
 
 	w3ld_arrange(server);
-	if (!server->focused)
-		focus_any(server);
+	if (output)
+		w3ld_focus_output_active(output);
 }
 
 static void window_commit (
