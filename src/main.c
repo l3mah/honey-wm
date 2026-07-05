@@ -4,6 +4,7 @@
  * scene graph, advertise the essential protocol globals, then run the Wayland
  * event loop. Output, window, and input policy live in the other modules.
  */
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,6 +52,7 @@ int main (
 	char *argv[]
 ) {
 	wlr_log_init(WLR_INFO, NULL);
+	signal(SIGCHLD, SIG_IGN); /* reap spawned children automatically */
 
 	struct w3ld_server server = {0};
 
@@ -86,6 +88,8 @@ int main (
 			server.output_layout);
 
 	w3ld_output_setup(&server);
+	w3ld_window_setup(&server);
+	w3ld_seat_setup(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);
 	if (!socket) {
