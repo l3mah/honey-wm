@@ -90,6 +90,7 @@ int main (
 	w3ld_output_setup(&server);
 	w3ld_output_manager_setup(&server);
 	w3ld_window_setup(&server);
+	w3ld_decoration_setup(&server);
 	w3ld_seat_setup(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);

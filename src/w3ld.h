@@ -44,6 +44,7 @@ struct w3ld_server {
 
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
+	struct wl_listener new_toplevel_decoration;
 	struct wl_list windows; /* w3ld_window.link — tiling/stack order */
 	struct w3ld_window *focused;
 
