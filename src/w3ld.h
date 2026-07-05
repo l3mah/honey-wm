@@ -20,6 +20,7 @@
 #include <xkbcommon/xkbcommon.h>
 
 struct w3ld_workspace;
+struct w3ld_layer_surface;
 
 enum w3ld_direction {
 	W3LD_DIR_LEFT,
@@ -33,6 +34,17 @@ enum w3ld_orientation {
 	W3LD_ORIENT_RIGHT,
 	W3LD_ORIENT_TOP,    /* master row on top, stack below */
 	W3LD_ORIENT_BOTTOM,
+};
+
+/* Scene-graph z-order: children of the scene root, lowest first. */
+enum w3ld_scene_layer {
+	W3LD_LAYER_BACKGROUND,
+	W3LD_LAYER_BOTTOM,
+	W3LD_LAYER_TILED,
+	W3LD_LAYER_FLOATING,
+	W3LD_LAYER_TOP,
+	W3LD_LAYER_OVERLAY,
+	W3LD_NUM_LAYERS,
 };
 
 /* ------------------------------------------------------------------- config */
@@ -71,8 +83,12 @@ struct w3ld_server {
 	struct wlr_allocator *allocator;
 
 	struct wlr_scene *scene;
+	struct wlr_scene_tree *layers[W3LD_NUM_LAYERS];
 	struct wlr_output_layout *output_layout;
 	struct wlr_scene_output_layout *scene_layout;
+
+	struct wl_listener new_layer_surface;
+	struct w3ld_layer_surface *focused_layer;
 
 	struct wl_list outputs; /* w3ld_output.link */
 	struct wl_listener new_output;
@@ -124,6 +140,8 @@ struct w3ld_output {
 	struct w3ld_workspace *active;
 	int previous_number; /* for workspace-back */
 
+	struct wl_list layer_surfaces; /* w3ld_layer_surface.link */
+
 	struct wl_listener frame;
 	struct wl_listener destroy;
 };
@@ -169,6 +187,21 @@ struct w3ld_ipc_client {
 	struct w3ld_server *server;
 	int fd;
 	struct wl_event_source *source;
+};
+
+/* -------------------------------------------------------------- layer surface */
+
+struct w3ld_layer_surface {
+	struct wl_list link; /* w3ld_output.layer_surfaces */
+	struct w3ld_server *server;
+	struct w3ld_output *output;
+	struct wlr_layer_surface_v1 *layer_surface;
+	struct wlr_scene_layer_surface_v1 *scene;
+
+	struct wl_listener map;
+	struct wl_listener unmap;
+	struct wl_listener commit;
+	struct wl_listener destroy;
 };
 
 /* ----------------------------------------------------------------- keyboard */
@@ -280,10 +313,13 @@ void w3ld_action_move_to_output (
 	enum w3ld_direction direction
 );
 
+/* layer shell */
+void w3ld_layer_setup (struct w3ld_server *server);
+void w3ld_layer_arrange (struct w3ld_output *output);
+
 /* Stubs filled in later milestones. */
 void w3ld_input_setup (struct w3ld_server *server);
 void w3ld_decoration_setup (struct w3ld_server *server);
-void w3ld_layer_setup (struct w3ld_server *server);
 void w3ld_xwayland_setup (struct w3ld_server *server);
 
 #endif

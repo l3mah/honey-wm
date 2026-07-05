@@ -88,6 +88,7 @@ int main (
 	server.scene_layout = wlr_scene_attach_output_layout(server.scene,
 			server.output_layout);
 
+	w3ld_layer_setup(&server);
 	w3ld_output_setup(&server);
 	w3ld_output_manager_setup(&server);
 	w3ld_window_setup(&server);

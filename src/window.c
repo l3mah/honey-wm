@@ -38,6 +38,8 @@ void w3ld_focus_window (struct w3ld_window *window) {
 		return;
 
 	struct w3ld_server *server = window->server;
+	if (server->focused_layer)
+		return; /* a keyboard-interactive layer surface holds focus */
 	server->focused_output = window->workspace->output;
 	if (server->focused == window)
 		return;
@@ -168,11 +170,11 @@ static void new_xdg_toplevel (
 	 * destroyed with the surface) are siblings under the scene root. */
 	float inactive[4];
 	color_to_float(server->config.border_color_inactive, inactive);
-	window->tree = wlr_scene_tree_create(&server->scene->tree);
+	window->tree = wlr_scene_tree_create(server->layers[W3LD_LAYER_TILED]);
 	for (int i = 0; i < 4; i++)
 		window->border[i] = wlr_scene_rect_create(window->tree, 1, 1, inactive);
-	window->surface_tree =
-		wlr_scene_xdg_surface_create(&server->scene->tree, toplevel->base);
+	window->surface_tree = wlr_scene_xdg_surface_create(
+			server->layers[W3LD_LAYER_TILED], toplevel->base);
 	window->surface_tree->node.data = window;
 
 	window->map.notify = window_map;

@@ -94,7 +94,9 @@ static void handle_new_output (
 	struct w3ld_output *output = calloc(1, sizeof *output);
 	output->server = server;
 	output->wlr_output = wlr_output;
+	wlr_output->data = output; /* for wlr_output -> w3ld_output lookups */
 	wl_list_init(&output->workspaces);
+	wl_list_init(&output->layer_surfaces);
 
 	output->frame.notify = output_frame;
 	wl_signal_add(&wlr_output->events.frame, &output->frame);

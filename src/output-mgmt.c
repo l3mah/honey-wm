@@ -12,13 +12,12 @@
 
 /* --------------------------------------------------------------------- helpers */
 
-/* Refresh each output's usable box from the layout and re-tile. */
+/* Refresh each output's usable box (full box minus layer-shell exclusive zones)
+ * and re-tile. */
 static void refresh_layout (struct w3ld_server *server) {
 	struct w3ld_output *output;
-	wl_list_for_each(output, &server->outputs, link) {
-		wlr_output_layout_get_box(server->output_layout, output->wlr_output,
-				&output->usable);
-	}
+	wl_list_for_each(output, &server->outputs, link)
+		w3ld_layer_arrange(output);
 	w3ld_arrange(server);
 }
 
