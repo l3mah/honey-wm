@@ -143,7 +143,9 @@ struct w3ld_window {
 	struct w3ld_server *server;
 	struct w3ld_workspace *workspace;
 	struct wlr_xdg_toplevel *xdg_toplevel;
-	struct wlr_scene_tree *scene_tree;
+	struct wlr_scene_tree *tree;         /* parent, positioned at the tile origin */
+	struct wlr_scene_tree *surface_tree; /* xdg surface, inset by the border */
+	struct wlr_scene_rect *border[4];    /* top, bottom, left, right */
 	struct wlr_box geom; /* current tiled geometry */
 	bool mapped;
 

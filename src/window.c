@@ -9,6 +9,28 @@
 
 #include "w3ld.h"
 
+/* -------------------------------------------------------------------- borders */
+
+static void color_to_float (
+	uint32_t color,
+	float out[4]
+) {
+	out[0] = ((color >> 24) & 0xff) / 255.0f;
+	out[1] = ((color >> 16) & 0xff) / 255.0f;
+	out[2] = ((color >> 8) & 0xff) / 255.0f;
+	out[3] = (color & 0xff) / 255.0f;
+}
+
+static void set_border_color (
+	struct w3ld_window *window,
+	uint32_t color
+) {
+	float rgba[4];
+	color_to_float(color, rgba);
+	for (int i = 0; i < 4; i++)
+		wlr_scene_rect_set_color(window->border[i], rgba);
+}
+
 /* --------------------------------------------------------------------- focus */
 
 void w3ld_focus_window (struct w3ld_window *window) {
@@ -20,11 +42,15 @@ void w3ld_focus_window (struct w3ld_window *window) {
 	if (server->focused == window)
 		return;
 
-	if (server->focused)
+	if (server->focused) {
 		wlr_xdg_toplevel_set_activated(server->focused->xdg_toplevel, false);
+		set_border_color(server->focused, server->config.border_color_inactive);
+	}
 
-	wlr_scene_node_raise_to_top(&window->scene_tree->node);
+	wlr_scene_node_raise_to_top(&window->tree->node);
+	wlr_scene_node_raise_to_top(&window->surface_tree->node);
 	wlr_xdg_toplevel_set_activated(window->xdg_toplevel, true);
+	set_border_color(window, server->config.border_color_active);
 
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
 	if (keyboard) {
@@ -120,6 +146,7 @@ static void window_destroy (
 	wl_list_remove(&window->unmap.link);
 	wl_list_remove(&window->commit.link);
 	wl_list_remove(&window->destroy.link);
+	wlr_scene_node_destroy(&window->tree->node); /* borders; surface self-frees */
 	free(window);
 }
 
@@ -136,9 +163,17 @@ static void new_xdg_toplevel (
 	struct w3ld_window *window = calloc(1, sizeof *window);
 	window->server = server;
 	window->xdg_toplevel = toplevel;
-	window->scene_tree =
+
+	/* Border tree (owned here) and the surface tree (owned by the scene helper,
+	 * destroyed with the surface) are siblings under the scene root. */
+	float inactive[4];
+	color_to_float(server->config.border_color_inactive, inactive);
+	window->tree = wlr_scene_tree_create(&server->scene->tree);
+	for (int i = 0; i < 4; i++)
+		window->border[i] = wlr_scene_rect_create(window->tree, 1, 1, inactive);
+	window->surface_tree =
 		wlr_scene_xdg_surface_create(&server->scene->tree, toplevel->base);
-	window->scene_tree->node.data = window;
+	window->surface_tree->node.data = window;
 
 	window->map.notify = window_map;
 	wl_signal_add(&toplevel->base->surface->events.map, &window->map);

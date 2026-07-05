@@ -1,28 +1,51 @@
 /* Tiling layouts.
  *
  * A stateless master-stack layout over each output's active workspace, driven by
- * the config (master-mfact/nmaster/orientation, gaps, smart-gaps). A layout is a
- * pure function of the window-list order and the config. Windows on inactive
- * workspaces are hidden. Borders arrive in a follow-up; content fills the tile.
+ * the config (master-mfact/nmaster/orientation, gaps, smart-gaps, border-size). A
+ * layout is a pure function of the window-list order and the config. Each window
+ * is a border tree framing an inset surface. Windows on inactive workspaces are
+ * hidden.
  */
 #include "w3ld.h"
 
 /* ------------------------------------------------------------------- helpers */
+
+/* Frame the tile (width x height) with a border of the given width. */
+static void set_border_rects (
+	struct w3ld_window *window,
+	int width,
+	int height,
+	int border
+) {
+	wlr_scene_rect_set_size(window->border[0], width, border);        /* top */
+	wlr_scene_node_set_position(&window->border[0]->node, 0, 0);
+	wlr_scene_rect_set_size(window->border[1], width, border);        /* bottom */
+	wlr_scene_node_set_position(&window->border[1]->node, 0, height - border);
+	wlr_scene_rect_set_size(window->border[2], border, height - 2 * border); /* left */
+	wlr_scene_node_set_position(&window->border[2]->node, 0, border);
+	wlr_scene_rect_set_size(window->border[3], border, height - 2 * border); /* right */
+	wlr_scene_node_set_position(&window->border[3]->node, width - border, border);
+}
 
 static void place_window (
 	struct w3ld_window *window,
 	int x,
 	int y,
 	int width,
-	int height
+	int height,
+	int border
 ) {
 	window->geom = (struct wlr_box){ .x = x, .y = y, .width = width,
 		.height = height };
-	wlr_scene_node_set_position(&window->scene_tree->node, x, y);
-	wlr_xdg_toplevel_set_size(window->xdg_toplevel, width, height);
-	DBG("tile %s -> %d,%d %dx%d",
+	wlr_scene_node_set_position(&window->tree->node, x, y);
+	set_border_rects(window, width, height, border);
+	wlr_scene_node_set_position(&window->surface_tree->node, x + border,
+			y + border);
+	wlr_xdg_toplevel_set_size(window->xdg_toplevel, width - 2 * border,
+			height - 2 * border);
+	DBG("tile %s -> %d,%d %dx%d bw %d",
 			window->xdg_toplevel->app_id ? window->xdg_toplevel->app_id : "?",
-			x, y, width, height);
+			x, y, width, height, border);
 }
 
 static int count_tiled (struct w3ld_workspace *workspace) {
@@ -44,7 +67,8 @@ static void place_region (
 	int count,
 	struct wlr_box box,
 	bool vertical,
-	int gap
+	int gap,
+	int border
 ) {
 	int index = 0;
 	int placed = 0;
@@ -67,7 +91,7 @@ static void place_region (
 				x = box.x + placed * (each + gap);
 				width = placed == count - 1 ? box.x + box.width - x : each;
 			}
-			place_window(window, x, y, width, height);
+			place_window(window, x, y, width, height, border);
 			placed++;
 		}
 		index++;
@@ -87,6 +111,7 @@ static void arrange_output (struct w3ld_output *output) {
 	bool smart = config->smart_gaps && window_count == 1;
 	int gap_out = smart ? 0 : config->gaps_out;
 	int gap_in = smart ? 0 : config->gaps_in;
+	int border = smart ? 0 : config->border_size;
 
 	struct wlr_box area = output->usable;
 	area.x += gap_out;
@@ -136,10 +161,11 @@ static void arrange_output (struct w3ld_output *output) {
 		}
 	}
 
-	place_region(output, 0, masters, master_box, split_horizontal, gap_in);
+	place_region(output, 0, masters, master_box, split_horizontal, gap_in,
+			border);
 	if (stacked > 0)
 		place_region(output, masters, stacked, stack_box, split_horizontal,
-				gap_in);
+				gap_in, border);
 }
 
 void w3ld_arrange (struct w3ld_server *server) {
@@ -151,6 +177,7 @@ void w3ld_arrange (struct w3ld_server *server) {
 	wl_list_for_each(window, &server->windows, link) {
 		bool visible = window->mapped && window->workspace
 			&& window->workspace->output->active == window->workspace;
-		wlr_scene_node_set_enabled(&window->scene_tree->node, visible);
+		wlr_scene_node_set_enabled(&window->tree->node, visible);
+		wlr_scene_node_set_enabled(&window->surface_tree->node, visible);
 	}
 }
