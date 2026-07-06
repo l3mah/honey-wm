@@ -80,7 +80,11 @@ int main (
 		return 0;
 	reply[count] = '\0';
 
+	if (strncmp(reply, "error", 5) == 0) {
+		fprintf(stderr, "%s\n", reply);
+		return 1;
+	}
 	if (strcmp(reply, "ok") != 0)
 		printf("%s\n", reply);
-	return strncmp(reply, "error", 5) == 0 ? 1 : 0;
+	return 0;
 }

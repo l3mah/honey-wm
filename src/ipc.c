@@ -421,6 +421,11 @@ static void dispatch (
 		return;
 	}
 
+	if (!strcmp(line, "reload")) {
+		w3ld_config_run(server);
+		snprintf(reply, reply_size, "ok");
+		return;
+	}
 	if (!strcmp(line, "ping")) {
 		snprintf(reply, reply_size, "pong");
 		return;
@@ -577,10 +582,35 @@ void w3ld_config_run (struct w3ld_server *server) {
 
 	if (path[0] && access(path, R_OK) == 0) {
 		LOG("running config: %s", path);
+
+		/* Errors (w3ldctl error replies, shell errors) are captured; if any,
+		 * a floating terminal shows them — at startup and on reload alike.
+		 * The rule floats it; re-adding on reload is a harmless replace. */
+		char rule_line[] = "rule app-id w3ld-errors float 50% 40%";
+		char rule_reply[64];
+		dispatch(server, rule_line, rule_reply, sizeof rule_reply);
+
+		const char *runtime = getenv("XDG_RUNTIME_DIR");
+		char script[1024];
+		if (server->config.error_window) {
+			snprintf(script, sizeof script,
+					"errs=%s/w3ld-init-errors.log; /bin/sh '%s' 2>\"$errs\";"
+					" if [ -s \"$errs\" ]; then"
+					" exec \"${TERMINAL:-alacritty}\" --class w3ld-errors -e"
+					" sh -c 'echo \"w3ld config errors:\"; echo;"
+					" cat \"$0\"; echo; echo \"[enter to close]\"; read line'"
+					" \"$errs\"; fi",
+					runtime ? runtime : "/tmp", path);
+		} else {
+			snprintf(script, sizeof script,
+					"exec /bin/sh '%s' 2>%s/w3ld-init-errors.log",
+					path, runtime ? runtime : "/tmp");
+		}
+
 		pid_t pid = fork();
 		if (pid == 0) {
 			setsid();
-			execl("/bin/sh", "/bin/sh", path, (char *)NULL);
+			execl("/bin/sh", "/bin/sh", "-c", script, (char *)NULL);
 			_exit(127);
 		}
 		return;

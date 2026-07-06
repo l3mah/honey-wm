@@ -108,6 +108,13 @@ struct w3ld_config {
 	bool mouse_focus_new;
 	bool exit_fullscreen_on_new;
 	bool allow_tearing;
+	bool drop_at_cursor;   /* dropping a dragged tiled window re-tiles it there */
+	bool resize_on_border; /* dragging a border resizes without a modifier */
+	bool scroll_workspace; /* super+scroll cycles workspaces */
+	double active_opacity;
+	double inactive_opacity;
+	double dim_inactive; /* 0 = off, else dim strength 0..1 */
+	bool error_window;   /* show config errors in a floating terminal */
 };
 
 /* ------------------------------------------------------------------- server */
@@ -180,6 +187,14 @@ struct w3ld_server {
 	struct wl_listener cursor_frame;
 	struct wl_listener request_cursor;
 	struct wl_listener request_set_selection;
+
+	/* interactive pointer operation (super+drag move/resize) */
+	enum { W3LD_OP_NONE, W3LD_OP_MOVE, W3LD_OP_RESIZE } op;
+	struct w3ld_window *op_window;
+	bool op_was_tiled;             /* re-tile on drop (drop-at-cursor) */
+	double op_start_x, op_start_y; /* cursor at grab time */
+	struct wlr_box op_geom;        /* window geometry at grab time */
+	uint32_t op_edges;             /* WLR_EDGE_* for resize */
 
 	/* extra protocol handlers */
 	struct wlr_tearing_control_manager_v1 *tearing_control;
@@ -270,6 +285,7 @@ struct w3ld_window {
 	struct wlr_scene_tree *tree;         /* parent, positioned at the tile origin */
 	struct wlr_scene_tree *surface_tree; /* xdg surface, inset by the border */
 	struct wlr_scene_rect *border[4];    /* top, bottom, left, right */
+	struct wlr_scene_rect *dim;          /* dim-inactive overlay */
 	struct wlr_box geom; /* current geometry */
 	bool mapped;
 

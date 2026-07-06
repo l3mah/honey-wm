@@ -34,6 +34,13 @@ void w3ld_config_defaults (struct w3ld_config *config) {
 	config->mouse_focus_new = false;
 	config->exit_fullscreen_on_new = true;
 	config->allow_tearing = false;
+	config->drop_at_cursor = true;
+	config->resize_on_border = true;
+	config->scroll_workspace = true;
+	config->active_opacity = 1.0;
+	config->inactive_opacity = 1.0;
+	config->dim_inactive = 0.0;
+	config->error_window = true;
 }
 
 /* ------------------------------------------------------------------ parsers */
@@ -114,6 +121,20 @@ bool w3ld_config_set (
 		config->exit_fullscreen_on_new = parse_bool(value);
 	} else if (!strcmp(key, "allow-tearing")) {
 		config->allow_tearing = parse_bool(value);
+	} else if (!strcmp(key, "drop-at-cursor")) {
+		config->drop_at_cursor = parse_bool(value);
+	} else if (!strcmp(key, "resize-on-border")) {
+		config->resize_on_border = parse_bool(value);
+	} else if (!strcmp(key, "scroll-workspace")) {
+		config->scroll_workspace = parse_bool(value);
+	} else if (!strcmp(key, "active-opacity")) {
+		config->active_opacity = atof(value);
+	} else if (!strcmp(key, "inactive-opacity")) {
+		config->inactive_opacity = atof(value);
+	} else if (!strcmp(key, "dim-inactive")) {
+		config->dim_inactive = atof(value);
+	} else if (!strcmp(key, "error-window")) {
+		config->error_window = parse_bool(value);
 	} else if (!strcmp(key, "layout")) {
 		const struct w3ld_layout *layout = w3ld_layout_by_name(value);
 		if (!layout)

@@ -47,6 +47,7 @@ void w3ld_window_configure (
 	int height
 ) {
 	wlr_scene_node_set_position(&window->surface_tree->node, x, y);
+	wlr_scene_rect_set_size(window->dim, width, height);
 	if (window->type == W3LD_WINDOW_X11)
 		wlr_xwayland_surface_configure(window->xwayland_surface, x, y, width,
 				height);
@@ -135,6 +136,37 @@ static void set_border_color (
 		wlr_scene_rect_set_color(window->border[i], rgba);
 }
 
+/* ------------------------------------------------------------------- effects */
+
+static void buffer_set_opacity (
+	struct wlr_scene_buffer *buffer,
+	int sx,
+	int sy,
+	void *data
+) {
+	wlr_scene_buffer_set_opacity(buffer, *(float *)data);
+}
+
+/* Apply opacity and the dim overlay for the window's focus state. */
+static void apply_effects (
+	struct w3ld_window *window,
+	bool focused
+) {
+	struct w3ld_config *config = &window->server->config;
+
+	float opacity = focused ? (float)config->active_opacity
+		: (float)config->inactive_opacity;
+	wlr_scene_node_for_each_buffer(&window->surface_tree->node,
+			buffer_set_opacity, &opacity);
+
+	bool dim = !focused && config->dim_inactive > 0;
+	wlr_scene_node_set_enabled(&window->dim->node, dim);
+	if (dim) {
+		float shade[4] = { 0, 0, 0, (float)config->dim_inactive };
+		wlr_scene_rect_set_color(window->dim, shade);
+	}
+}
+
 /* ------------------------------------------------------- foreign toplevel */
 
 static void foreign_activate (
@@ -180,6 +212,7 @@ void w3ld_focus_window (struct w3ld_window *window) {
 	if (server->focused) {
 		w3ld_window_set_activated(server->focused, false);
 		set_border_color(server->focused, server->config.border_color_inactive);
+		apply_effects(server->focused, false);
 		if (server->focused->foreign)
 			wlr_foreign_toplevel_handle_v1_set_activated(
 					server->focused->foreign, false);
@@ -189,6 +222,7 @@ void w3ld_focus_window (struct w3ld_window *window) {
 	wlr_scene_node_raise_to_top(&window->surface_tree->node);
 	w3ld_window_set_activated(window, true);
 	set_border_color(window, server->config.border_color_active);
+	apply_effects(window, true);
 	if (window->foreign)
 		wlr_foreign_toplevel_handle_v1_set_activated(window->foreign, true);
 
@@ -306,6 +340,13 @@ void w3ld_window_finish_setup (struct w3ld_window *window) {
 	for (int i = 0; i < 4; i++)
 		window->border[i] = wlr_scene_rect_create(window->tree, 1, 1, inactive);
 	window->surface_tree->node.data = window;
+	window->tree->node.data = window; /* border-rect clicks resolve here */
+
+	/* Dim overlay: created last in the surface tree so it draws above the
+	 * content; sized in w3ld_window_configure, enabled while unfocused. */
+	float shade[4] = { 0, 0, 0, 0 };
+	window->dim = wlr_scene_rect_create(window->surface_tree, 1, 1, shade);
+	wlr_scene_node_set_enabled(&window->dim->node, false);
 }
 
 void w3ld_window_handle_map (struct w3ld_window *window) {
@@ -376,6 +417,10 @@ void w3ld_window_handle_unmap (struct w3ld_window *window) {
 	wl_list_remove(&window->link);
 	if (server->focused == window)
 		server->focused = NULL;
+	if (server->op_window == window) { /* grabbed window went away */
+		server->op = W3LD_OP_NONE;
+		server->op_window = NULL;
+	}
 
 	w3ld_arrange(server);
 	if (output)

@@ -14,6 +14,8 @@
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/util/edges.h>
+#include <linux/input-event-codes.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
 
@@ -163,6 +165,161 @@ static struct w3ld_window *window_from_node (struct wlr_scene_node *node) {
 	return NULL;
 }
 
+/* ------------------------------------------------------------- interactive op */
+
+/* Held Logo modifier on any keyboard of the seat. */
+static bool super_held (struct w3ld_server *server) {
+	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+	return keyboard
+		&& (wlr_keyboard_get_modifiers(keyboard) & WLR_MODIFIER_LOGO);
+}
+
+/* Begin a move/resize grab; a tiled window floats in place first. */
+static void op_begin (
+	struct w3ld_server *server,
+	struct w3ld_window *window,
+	int op,
+	uint32_t edges
+) {
+	if (window->fullscreen || window->maximized)
+		return;
+
+	server->op_was_tiled = w3ld_window_is_tiled(window);
+	if (server->op_was_tiled) {
+		window->floating = true;
+		window->float_geom = window->geom; /* float in place, no jump */
+		w3ld_window_update_layer(window);
+	}
+
+	server->op = op;
+	server->op_window = window;
+	server->op_start_x = server->cursor->x;
+	server->op_start_y = server->cursor->y;
+	server->op_geom = window->float_geom;
+	server->op_edges = edges;
+	w3ld_focus_window(window);
+	wlr_seat_pointer_notify_clear_focus(server->seat);
+	wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager,
+			op == W3LD_OP_MOVE ? "grabbing" : "se-resize");
+}
+
+/* Re-tile a dropped window at the cursor: insert it next to the tiled window
+ * under the cursor (or at the tail) on the output the cursor is over. */
+static void drop_at_cursor (
+	struct w3ld_server *server,
+	struct w3ld_window *window
+) {
+	struct w3ld_output *output = w3ld_output_at(server,
+			server->cursor->x, server->cursor->y);
+	if (output)
+		window->workspace = output->active;
+
+	struct w3ld_window *target = NULL;
+	struct w3ld_window *other;
+	wl_list_for_each(other, &server->windows, link) {
+		if (other == window || !other->mapped
+				|| other->workspace != window->workspace
+				|| !w3ld_window_is_tiled(other))
+			continue;
+		if (server->cursor->x >= other->geom.x
+				&& server->cursor->x < other->geom.x + other->geom.width
+				&& server->cursor->y >= other->geom.y
+				&& server->cursor->y < other->geom.y + other->geom.height) {
+			target = other;
+			break;
+		}
+	}
+
+	window->floating = false;
+	w3ld_window_update_layer(window);
+	wl_list_remove(&window->link);
+	if (target) {
+		/* before the target when the cursor is in its first half */
+		bool before = server->cursor->y
+			< target->geom.y + target->geom.height / 2;
+		wl_list_insert(before ? target->link.prev : &target->link,
+				&window->link);
+	} else {
+		wl_list_insert(server->windows.prev, &window->link);
+	}
+}
+
+static void op_end (struct w3ld_server *server) {
+	struct w3ld_window *window = server->op_window;
+	bool was_move = server->op == W3LD_OP_MOVE;
+	server->op = W3LD_OP_NONE;
+	server->op_window = NULL;
+
+	if (window && was_move && server->op_was_tiled
+			&& server->config.drop_at_cursor)
+		drop_at_cursor(server, window);
+
+	wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager, "default");
+	w3ld_arrange(server);
+}
+
+static void op_motion (struct w3ld_server *server) {
+	struct w3ld_window *window = server->op_window;
+	int dx = (int)(server->cursor->x - server->op_start_x);
+	int dy = (int)(server->cursor->y - server->op_start_y);
+
+	if (server->op == W3LD_OP_MOVE) {
+		window->float_geom.x = server->op_geom.x + dx;
+		window->float_geom.y = server->op_geom.y + dy;
+	} else {
+		struct wlr_box geom = server->op_geom;
+		if (server->op_edges & WLR_EDGE_RIGHT)
+			geom.width += dx;
+		if (server->op_edges & WLR_EDGE_BOTTOM)
+			geom.height += dy;
+		if (server->op_edges & WLR_EDGE_LEFT) {
+			geom.x += dx;
+			geom.width -= dx;
+		}
+		if (server->op_edges & WLR_EDGE_TOP) {
+			geom.y += dy;
+			geom.height -= dy;
+		}
+		if (geom.width < 50)
+			geom.width = 50;
+		if (geom.height < 50)
+			geom.height = 50;
+		window->float_geom = geom;
+	}
+	w3ld_arrange(server);
+}
+
+/* When a border rect is grabbed, which edge does it resize? */
+static uint32_t border_edge (
+	struct w3ld_window *window,
+	struct wlr_scene_node *node
+) {
+	if (node == &window->border[0]->node)
+		return WLR_EDGE_TOP;
+	if (node == &window->border[1]->node)
+		return WLR_EDGE_BOTTOM;
+	if (node == &window->border[2]->node)
+		return WLR_EDGE_LEFT;
+	if (node == &window->border[3]->node)
+		return WLR_EDGE_RIGHT;
+	return 0;
+}
+
+/* Resize edges from the grab point's quadrant within the window. */
+static uint32_t quadrant_edges (
+	struct w3ld_server *server,
+	struct w3ld_window *window
+) {
+	struct wlr_box *geom = window->floating ? &window->float_geom
+		: &window->geom;
+	uint32_t edges = 0;
+	edges |= server->cursor->x < geom->x + geom->width / 2
+		? WLR_EDGE_LEFT : WLR_EDGE_RIGHT;
+	edges |= server->cursor->y < geom->y + geom->height / 2
+		? WLR_EDGE_TOP : WLR_EDGE_BOTTOM;
+	return edges;
+}
+
 /* Forward pointer focus to the surface under the cursor; with follow-mouse on,
  * also move keyboard focus to the window (or output) under the cursor. */
 static void pointer_focus (
@@ -224,6 +381,10 @@ static void cursor_motion (
 
 	wlr_cursor_move(server->cursor, &event->pointer->base,
 			event->delta_x, event->delta_y);
+	if (server->op != W3LD_OP_NONE) {
+		op_motion(server);
+		return;
+	}
 	pointer_focus(server, event->time_msec);
 }
 
@@ -236,6 +397,10 @@ static void cursor_motion_absolute (
 	struct wlr_pointer_motion_absolute_event *event = data;
 	wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
 			event->x, event->y);
+	if (server->op != W3LD_OP_NONE) {
+		op_motion(server);
+		return;
+	}
 	pointer_focus(server, event->time_msec);
 }
 
@@ -245,6 +410,47 @@ static void cursor_button (
 ) {
 	struct w3ld_server *server = wl_container_of(listener, server, cursor_button);
 	struct wlr_pointer_button_event *event = data;
+
+	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+		if (server->op != W3LD_OP_NONE) {
+			op_end(server);
+			return;
+		}
+		wlr_seat_pointer_notify_button(server->seat, event->time_msec,
+				event->button, event->state);
+		return;
+	}
+
+	double sx, sy;
+	struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node,
+			server->cursor->x, server->cursor->y, &sx, &sy);
+	struct w3ld_window *window = node ? window_from_node(node) : NULL;
+
+	if (window && super_held(server)) {
+		if (event->button == BTN_LEFT) {
+			op_begin(server, window, W3LD_OP_MOVE, 0);
+			return;
+		}
+		if (event->button == BTN_RIGHT) {
+			op_begin(server, window, W3LD_OP_RESIZE,
+					quadrant_edges(server, window));
+			return;
+		}
+	}
+
+	/* Dragging a border rect resizes without a modifier. */
+	if (window && server->config.resize_on_border
+			&& event->button == BTN_LEFT
+			&& node->type == WLR_SCENE_NODE_RECT) {
+		uint32_t edge = border_edge(window, node);
+		if (edge) {
+			op_begin(server, window, W3LD_OP_RESIZE, edge);
+			return;
+		}
+	}
+
+	if (window)
+		w3ld_focus_window(window); /* click-to-focus */
 	wlr_seat_pointer_notify_button(server->seat, event->time_msec,
 			event->button, event->state);
 }
@@ -255,6 +461,15 @@ static void cursor_axis (
 ) {
 	struct w3ld_server *server = wl_container_of(listener, server, cursor_axis);
 	struct wlr_pointer_axis_event *event = data;
+
+	/* super+scroll cycles the focused output's workspaces. */
+	if (server->config.scroll_workspace && super_held(server)
+			&& event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL
+			&& event->delta != 0) {
+		w3ld_action_workspace_cycle(server, event->delta > 0 ? +1 : -1);
+		return;
+	}
+
 	wlr_seat_pointer_notify_axis(server->seat, event->time_msec,
 			event->orientation, event->delta, event->delta_discrete,
 			event->source, event->relative_direction);
