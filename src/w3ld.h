@@ -102,6 +102,7 @@ struct w3ld_server {
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_toplevel_decoration;
+	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
 	struct wl_list windows; /* w3ld_window.link — tiling/stack order */
 	struct w3ld_window *focused;
 
@@ -201,12 +202,16 @@ struct w3ld_window {
 	struct wlr_box geom; /* current tiled geometry */
 	bool mapped;
 
+	struct wlr_foreign_toplevel_handle_v1 *foreign; /* taskbar handle, or NULL */
+
 	struct wl_listener map;
 	struct wl_listener unmap;
 	struct wl_listener commit;
 	struct wl_listener destroy;
 	struct wl_listener set_title;
 	struct wl_listener set_app_id;
+	struct wl_listener foreign_activate;
+	struct wl_listener foreign_close;
 };
 
 /* ------------------------------------------------------------------ keybind */

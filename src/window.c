@@ -7,7 +7,38 @@
  */
 #include <stdlib.h>
 
+#include <wlr/types/wlr_foreign_toplevel_management_v1.h>
+
 #include "w3ld.h"
+
+/* ------------------------------------------------------- foreign toplevel */
+
+static void foreign_activate (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window =
+		wl_container_of(listener, window, foreign_activate);
+	w3ld_focus_window(window);
+}
+
+static void foreign_close (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window =
+		wl_container_of(listener, window, foreign_close);
+	wlr_xdg_toplevel_send_close(window->xdg_toplevel);
+}
+
+static void foreign_update (struct w3ld_window *window) {
+	if (!window->foreign)
+		return;
+	wlr_foreign_toplevel_handle_v1_set_title(window->foreign,
+			window->xdg_toplevel->title ? window->xdg_toplevel->title : "");
+	wlr_foreign_toplevel_handle_v1_set_app_id(window->foreign,
+			window->xdg_toplevel->app_id ? window->xdg_toplevel->app_id : "");
+}
 
 /* -------------------------------------------------------------------- borders */
 
@@ -47,12 +78,17 @@ void w3ld_focus_window (struct w3ld_window *window) {
 	if (server->focused) {
 		wlr_xdg_toplevel_set_activated(server->focused->xdg_toplevel, false);
 		set_border_color(server->focused, server->config.border_color_inactive);
+		if (server->focused->foreign)
+			wlr_foreign_toplevel_handle_v1_set_activated(
+					server->focused->foreign, false);
 	}
 
 	wlr_scene_node_raise_to_top(&window->tree->node);
 	wlr_scene_node_raise_to_top(&window->surface_tree->node);
 	wlr_xdg_toplevel_set_activated(window->xdg_toplevel, true);
 	set_border_color(window, server->config.border_color_active);
+	if (window->foreign)
+		wlr_foreign_toplevel_handle_v1_set_activated(window->foreign, true);
 
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
 	if (keyboard) {
@@ -97,6 +133,19 @@ static void window_map (
 
 	window->mapped = true;
 	window->workspace = server->focused_output->active;
+
+	window->foreign = wlr_foreign_toplevel_handle_v1_create(
+			server->foreign_toplevel_manager);
+	foreign_update(window);
+	wlr_foreign_toplevel_handle_v1_output_enter(window->foreign,
+			window->workspace->output->wlr_output);
+	window->foreign_activate.notify = foreign_activate;
+	wl_signal_add(&window->foreign->events.request_activate,
+			&window->foreign_activate);
+	window->foreign_close.notify = foreign_close;
+	wl_signal_add(&window->foreign->events.request_close,
+			&window->foreign_close);
+
 	if (server->config.new_window_master)
 		wl_list_insert(&server->windows, &window->link);       /* master */
 	else
@@ -119,6 +168,13 @@ static void window_unmap (
 	struct w3ld_server *server = window->server;
 	struct w3ld_output *output =
 		window->workspace ? window->workspace->output : server->focused_output;
+
+	if (window->foreign) {
+		wl_list_remove(&window->foreign_activate.link);
+		wl_list_remove(&window->foreign_close.link);
+		wlr_foreign_toplevel_handle_v1_destroy(window->foreign);
+		window->foreign = NULL;
+	}
 
 	window->mapped = false;
 	wl_list_remove(&window->link);
@@ -146,6 +202,7 @@ static void window_status_changed (
 	void *data
 ) {
 	struct w3ld_window *window = wl_container_of(listener, window, set_title);
+	foreign_update(window);
 	w3ld_status_broadcast(window->server);
 }
 
@@ -154,6 +211,7 @@ static void window_app_id_changed (
 	void *data
 ) {
 	struct w3ld_window *window = wl_container_of(listener, window, set_app_id);
+	foreign_update(window);
 	w3ld_status_broadcast(window->server);
 }
 
@@ -215,6 +273,8 @@ static void new_xdg_toplevel (
 
 void w3ld_window_setup (struct w3ld_server *server) {
 	wl_list_init(&server->windows);
+	server->foreign_toplevel_manager =
+		wlr_foreign_toplevel_manager_v1_create(server->display);
 	server->xdg_shell = wlr_xdg_shell_create(server->display, 3);
 	server->new_xdg_toplevel.notify = new_xdg_toplevel;
 	wl_signal_add(&server->xdg_shell->events.new_toplevel,
