@@ -55,10 +55,14 @@ static void buffer_descale (
 	void *data
 ) {
 	double scale = *(double *)data;
-	if (buffer->buffer)
-		wlr_scene_buffer_set_dest_size(buffer,
-				(int)round(buffer->buffer->width / scale),
-				(int)round(buffer->buffer->height / scale));
+	if (!buffer->buffer)
+		return;
+	int width = (int)round(buffer->buffer->width / scale);
+	int height = (int)round(buffer->buffer->height / scale);
+	DBG("x11 descale: buffer %dx%d -> dest %dx%d (scale %.2f)",
+			buffer->buffer->width, buffer->buffer->height, width, height,
+			scale);
+	wlr_scene_buffer_set_dest_size(buffer, width, height);
 }
 
 /* Runs after the scene's own commit handler (registered earlier), so this
