@@ -5,6 +5,7 @@
  * dwm-style global tags.
  */
 #include <stdlib.h>
+#include <string.h>
 
 #include "w3ld.h"
 
@@ -76,6 +77,19 @@ struct w3ld_output *w3ld_output_in_direction (
 		}
 	}
 	return best;
+}
+
+/* The output with this connector name (e.g. "DP-1"), or NULL. */
+struct w3ld_output *w3ld_output_by_name (
+	struct w3ld_server *server,
+	const char *name
+) {
+	struct w3ld_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (!strcmp(output->wlr_output->name, name))
+			return output;
+	}
+	return NULL;
 }
 
 /* The output whose usable box contains the point (x, y), or NULL. */

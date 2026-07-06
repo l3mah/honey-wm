@@ -380,6 +380,22 @@ void w3ld_action_fullscreen (struct w3ld_server *server);
 void w3ld_action_maximize (struct w3ld_server *server);
 void w3ld_action_fake_fullscreen (struct w3ld_server *server);
 
+/* stack order + live layout tweaks */
+void w3ld_action_swap (
+	struct w3ld_server *server,
+	int direction
+);
+void w3ld_action_swap_master (struct w3ld_server *server);
+void w3ld_action_mfact (
+	struct w3ld_server *server,
+	double delta
+);
+void w3ld_action_nmaster (
+	struct w3ld_server *server,
+	int delta
+);
+void w3ld_action_orientation_cycle (struct w3ld_server *server);
+
 /* config */
 void w3ld_config_defaults (struct w3ld_config *config);
 bool w3ld_config_set (
@@ -429,6 +445,10 @@ struct w3ld_output *w3ld_output_at (
 	struct w3ld_server *server,
 	double x,
 	double y
+);
+struct w3ld_output *w3ld_output_by_name (
+	struct w3ld_server *server,
+	const char *name
 );
 void w3ld_warp_to_focus (struct w3ld_server *server);
 

@@ -176,6 +176,23 @@ bool w3ld_action_run (
 		w3ld_action_focus(server, +1);
 	} else if (!strcmp(verb, "focus-prev")) {
 		w3ld_action_focus(server, -1);
+	} else if (!strcmp(verb, "swap-next")) {
+		w3ld_action_swap(server, +1);
+	} else if (!strcmp(verb, "swap-prev")) {
+		w3ld_action_swap(server, -1);
+	} else if (!strcmp(verb, "swap-master")) {
+		w3ld_action_swap_master(server);
+	} else if (!strcmp(verb, "master-mfact")) {
+		if (arg)
+			w3ld_action_mfact(server, atof(arg));
+	} else if (!strcmp(verb, "master-nmaster")) {
+		if (arg)
+			w3ld_action_nmaster(server, atoi(arg));
+	} else if (!strcmp(verb, "master-orientation")) {
+		if (arg)
+			w3ld_config_set(server, "master-orientation", arg);
+	} else if (!strcmp(verb, "master-orientationcycle")) {
+		w3ld_action_orientation_cycle(server);
 	} else if (!strcmp(verb, "workspace")) {
 		if (arg)
 			w3ld_action_workspace(server, atoi(arg));
@@ -190,6 +207,13 @@ bool w3ld_action_run (
 		w3ld_action_workspace_cycle(server, -1);
 	} else if (!strcmp(verb, "focus-dir")) {
 		w3ld_action_focus_dir(server, parse_direction(arg));
+	} else if (!strcmp(verb, "focus-output")) {
+		struct w3ld_output *output =
+			arg ? w3ld_output_by_name(server, arg) : NULL;
+		if (!output)
+			return false;
+		w3ld_focus_output_active(output);
+		w3ld_warp_to_focus(server);
 	} else if (!strcmp(verb, "move-to-output")) {
 		w3ld_action_move_to_output(server, parse_direction(arg));
 	} else {

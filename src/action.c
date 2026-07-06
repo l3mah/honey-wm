@@ -112,6 +112,115 @@ void w3ld_action_workspace_cycle (
 	w3ld_switch_workspace(output, target->number);
 }
 
+/* ---------------------------------------------------------------- stack order */
+
+/* Swap two list nodes, safe for adjacent nodes in either order. */
+static void list_swap (
+	struct wl_list *a,
+	struct wl_list *b
+) {
+	if (a == b)
+		return;
+	if (a->prev == b) { /* b directly before a: move a in front of b */
+		wl_list_remove(a);
+		wl_list_insert(b->prev, a);
+		return;
+	}
+	if (b->prev == a) { /* a directly before b */
+		wl_list_remove(b);
+		wl_list_insert(a->prev, b);
+		return;
+	}
+	struct wl_list *a_prev = a->prev;
+	struct wl_list *b_prev = b->prev;
+	wl_list_remove(a);
+	wl_list_insert(b_prev, a);
+	wl_list_remove(b);
+	wl_list_insert(a_prev, b);
+}
+
+/* The next/previous tiled window on the same workspace, wrapping, or NULL. */
+static struct w3ld_window *tiled_neighbor (
+	struct w3ld_window *from,
+	int direction
+) {
+	struct wl_list *link = &from->link;
+	struct w3ld_server *server = from->server;
+	for (;;) {
+		link = direction > 0 ? link->next : link->prev;
+		if (link == &server->windows) {
+			link = direction > 0 ? link->next : link->prev;
+			continue;
+		}
+		if (link == &from->link)
+			return NULL;
+		struct w3ld_window *window = wl_container_of(link, window, link);
+		if (window->mapped && window->workspace == from->workspace
+				&& w3ld_window_is_tiled(window))
+			return window;
+	}
+}
+
+void w3ld_action_swap (
+	struct w3ld_server *server,
+	int direction
+) {
+	struct w3ld_window *window = server->focused;
+	if (!window || !w3ld_window_is_tiled(window))
+		return;
+	struct w3ld_window *other = tiled_neighbor(window, direction);
+	if (!other)
+		return;
+	list_swap(&window->link, &other->link);
+	w3ld_arrange(server);
+	w3ld_warp_to_focus(server);
+}
+
+void w3ld_action_swap_master (struct w3ld_server *server) {
+	struct w3ld_window *window = server->focused;
+	if (!window || !w3ld_window_is_tiled(window))
+		return;
+	struct w3ld_window *master = w3ld_workspace_first_window(window->workspace);
+	while (master && !w3ld_window_is_tiled(master))
+		master = tiled_neighbor(master, +1);
+	if (!master)
+		return;
+	if (master == window) /* focused is the master: swap with the next */
+		master = tiled_neighbor(window, +1);
+	if (!master || master == window)
+		return;
+	list_swap(&window->link, &master->link);
+	w3ld_arrange(server);
+	w3ld_warp_to_focus(server);
+}
+
+/* ---------------------------------------------------------- live layout tweaks */
+
+void w3ld_action_mfact (
+	struct w3ld_server *server,
+	double delta
+) {
+	double value = server->config.master_mfact + delta;
+	server->config.master_mfact = value < 0.05 ? 0.05
+		: value > 0.95 ? 0.95 : value;
+	w3ld_arrange(server);
+}
+
+void w3ld_action_nmaster (
+	struct w3ld_server *server,
+	int delta
+) {
+	int value = server->config.master_nmaster + delta;
+	server->config.master_nmaster = value < 1 ? 1 : value;
+	w3ld_arrange(server);
+}
+
+void w3ld_action_orientation_cycle (struct w3ld_server *server) {
+	server->config.master_orientation =
+		(server->config.master_orientation + 1) % 4;
+	w3ld_arrange(server);
+}
+
 /* ------------------------------------------------------------- window states */
 
 /* Convert a float-size config value to pixels: a fraction of the usable axis,

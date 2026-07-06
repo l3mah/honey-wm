@@ -300,7 +300,15 @@ static void load_default_bindings (struct w3ld_server *server) {
 	w3ld_binding_add(server, "super+Down", "focus-dir down");
 	w3ld_binding_add(server, "super+shift+Left", "move-to-output left");
 	w3ld_binding_add(server, "super+shift+Right", "move-to-output right");
-	w3ld_binding_add(server, "super+shift+e", "exit");
+	w3ld_binding_add(server, "super+shift+f", "toggle-float");
+	w3ld_binding_add(server, "super+e", "fullscreen");
+	w3ld_binding_add(server, "super+m", "maximize");
+	w3ld_binding_add(server, "super+shift+Return", "swap-master");
+	w3ld_binding_add(server, "super+shift+j", "swap-next");
+	w3ld_binding_add(server, "super+shift+k", "swap-prev");
+	w3ld_binding_add(server, "super+h", "master-mfact 0.05");
+	w3ld_binding_add(server, "super+l", "master-mfact -0.05");
+	w3ld_binding_add(server, "super+shift+Escape", "exit");
 
 	for (int number = 1; number <= 9; number++) {
 		char combo[32], action[32];
