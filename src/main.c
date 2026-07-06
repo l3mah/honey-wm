@@ -156,6 +156,10 @@ int main (
 	w3ld_ipc_setup(&server);
 	w3ld_config_run(&server);
 
+	/* Load a cursor image up front; without this the cursor is invisible
+	 * until the first motion event sets one. */
+	wlr_cursor_set_xcursor(server.cursor, server.xcursor_manager, "default");
+
 	wl_display_run(server.display);
 
 	wl_display_destroy_clients(server.display);

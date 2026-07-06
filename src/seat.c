@@ -149,6 +149,8 @@ void w3ld_warp_to_focus (struct w3ld_server *server) {
 		return;
 	}
 	wlr_cursor_warp(server->cursor, NULL, x, y);
+	DBG("warp to %d,%d (%s)", x, y,
+			server->focused ? w3ld_window_app_id(server->focused) : "output");
 }
 
 /* Climb the scene tree to the window that owns a node, or NULL. */

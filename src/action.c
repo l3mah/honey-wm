@@ -148,12 +148,10 @@ static struct w3ld_window *tiled_neighbor (
 	struct w3ld_server *server = from->server;
 	for (;;) {
 		link = direction > 0 ? link->next : link->prev;
-		if (link == &server->windows) {
-			link = direction > 0 ? link->next : link->prev;
-			continue;
-		}
 		if (link == &from->link)
 			return NULL;
+		if (link == &server->windows)
+			continue; /* the sentinel; the next step wraps past it */
 		struct w3ld_window *window = wl_container_of(link, window, link);
 		if (window->mapped && window->workspace == from->workspace
 				&& w3ld_window_is_tiled(window))
