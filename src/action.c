@@ -6,6 +6,8 @@
  */
 #include <stdlib.h>
 
+#include <wlr/xwayland/xwayland.h>
+
 #include "w3ld.h"
 
 /* ------------------------------------------------------------------- helpers */
@@ -108,6 +110,93 @@ void w3ld_action_workspace_cycle (
 		return;
 	struct w3ld_workspace *target = wl_container_of(link, target, link);
 	w3ld_switch_workspace(output, target->number);
+}
+
+/* ------------------------------------------------------------- window states */
+
+/* Convert a float-size config value to pixels: a fraction of the usable axis,
+ * with values above 1 read as a percent (lakewm compatibility). */
+static int float_size (
+	double value,
+	int axis
+) {
+	if (value > 1.0)
+		value /= 100.0;
+	return (int)(axis * value);
+}
+
+/* Seed the floating geometry: the configured size (or the app's own choice),
+ * centred on the window's output. */
+static void float_seed (struct w3ld_window *window) {
+	struct w3ld_server *server = window->server;
+	struct wlr_box *usable = &window->workspace->output->usable;
+
+	int width, height;
+	if (server->config.float_app_size && window->type == W3LD_WINDOW_X11) {
+		width = window->xwayland_surface->width;
+		height = window->xwayland_surface->height;
+	} else {
+		width = float_size(server->config.float_width, usable->width);
+		height = float_size(server->config.float_height, usable->height);
+		if (server->config.float_app_size) {
+			/* xdg: size 0 lets the app choose; adopted on its next commit. */
+			window->float_pending_app_size = true;
+		}
+	}
+	window->float_geom = (struct wlr_box){
+		.x = usable->x + (usable->width - width) / 2,
+		.y = usable->y + (usable->height - height) / 2,
+		.width = width,
+		.height = height,
+	};
+}
+
+static void apply_state_change (struct w3ld_window *window) {
+	w3ld_window_inform_states(window);
+	w3ld_window_update_layer(window);
+	w3ld_arrange(window->server);
+}
+
+void w3ld_action_toggle_float (struct w3ld_server *server) {
+	struct w3ld_window *window = server->focused;
+	if (!window)
+		return;
+	bool enable = !window->floating;
+	w3ld_window_clear_states(window);
+	window->floating = enable;
+	if (enable)
+		float_seed(window);
+	apply_state_change(window);
+}
+
+void w3ld_action_fullscreen (struct w3ld_server *server) {
+	struct w3ld_window *window = server->focused;
+	if (!window)
+		return;
+	bool enable = !window->fullscreen;
+	w3ld_window_clear_states(window);
+	window->fullscreen = enable;
+	apply_state_change(window);
+}
+
+void w3ld_action_maximize (struct w3ld_server *server) {
+	struct w3ld_window *window = server->focused;
+	if (!window)
+		return;
+	bool enable = !window->maximized;
+	w3ld_window_clear_states(window);
+	window->maximized = enable;
+	apply_state_change(window);
+}
+
+void w3ld_action_fake_fullscreen (struct w3ld_server *server) {
+	struct w3ld_window *window = server->focused;
+	if (!window)
+		return;
+	bool enable = !window->fake_fullscreen;
+	w3ld_window_clear_states(window);
+	window->fake_fullscreen = enable;
+	apply_state_change(window);
 }
 
 /* ---------------------------------------------------------------- directional */

@@ -70,6 +70,48 @@ void w3ld_window_close (struct w3ld_window *window) {
 		wlr_xdg_toplevel_send_close(window->xdg_toplevel);
 }
 
+/* ------------------------------------------------------------- window states */
+
+bool w3ld_window_is_tiled (struct w3ld_window *window) {
+	return !window->floating && !window->fullscreen && !window->maximized
+		&& !window->fake_fullscreen;
+}
+
+/* Move the window's scene trees to the layer its state calls for. */
+void w3ld_window_update_layer (struct w3ld_window *window) {
+	struct w3ld_server *server = window->server;
+	enum w3ld_scene_layer layer = window->fullscreen ? W3LD_LAYER_FULLSCREEN
+		: window->floating ? W3LD_LAYER_FLOATING
+		: W3LD_LAYER_TILED;
+	wlr_scene_node_reparent(&window->tree->node, server->layers[layer]);
+	wlr_scene_node_reparent(&window->surface_tree->node, server->layers[layer]);
+	wlr_scene_node_raise_to_top(&window->tree->node);
+	wlr_scene_node_raise_to_top(&window->surface_tree->node);
+}
+
+/* Tell the client which fullscreen/maximized state it should render for. */
+void w3ld_window_inform_states (struct w3ld_window *window) {
+	bool fullscreen = window->fullscreen || window->fake_fullscreen;
+	if (window->type == W3LD_WINDOW_X11) {
+		wlr_xwayland_surface_set_fullscreen(window->xwayland_surface,
+				fullscreen);
+		wlr_xwayland_surface_set_maximized(window->xwayland_surface,
+				window->maximized, window->maximized);
+	} else {
+		wlr_xdg_toplevel_set_fullscreen(window->xdg_toplevel, fullscreen);
+		wlr_xdg_toplevel_set_maximized(window->xdg_toplevel, window->maximized);
+	}
+}
+
+void w3ld_window_clear_states (struct w3ld_window *window) {
+	window->floating = false;
+	window->fullscreen = false;
+	window->maximized = false;
+	window->fake_fullscreen = false;
+	w3ld_window_inform_states(window);
+	w3ld_window_update_layer(window);
+}
+
 /* -------------------------------------------------------------------- borders */
 
 static void color_to_float (
@@ -200,6 +242,23 @@ void w3ld_window_handle_map (struct w3ld_window *window) {
 	window->mapped = true;
 	window->workspace = server->focused_output->active;
 
+	/* A fullscreen/maximized window on this workspace either yields to the
+	 * new window or keeps covering it (and keeps focus). Fake-fullscreen is
+	 * a rendering preference, not exclusivity — never affected. */
+	bool covered = false;
+	struct w3ld_window *other;
+	wl_list_for_each(other, &server->windows, link) {
+		if (!other->mapped || other->workspace != window->workspace)
+			continue;
+		if (!other->fullscreen && !other->maximized)
+			continue;
+		if (server->config.exit_fullscreen_on_new) {
+			w3ld_window_clear_states(other);
+		} else {
+			covered = true;
+		}
+	}
+
 	window->foreign = wlr_foreign_toplevel_handle_v1_create(
 			server->foreign_toplevel_manager);
 	foreign_update(window);
@@ -218,9 +277,9 @@ void w3ld_window_handle_map (struct w3ld_window *window) {
 		wl_list_insert(server->windows.prev, &window->link);   /* stack tail */
 
 	w3ld_arrange(server);
-	if (server->config.focus_new)
+	if (server->config.focus_new && !covered)
 		w3ld_focus_window(window);
-	if (server->config.mouse_focus_new)
+	if (server->config.mouse_focus_new && !covered)
 		wlr_cursor_warp(server->cursor, NULL,
 				window->geom.x + window->geom.width / 2,
 				window->geom.y + window->geom.height / 2);
@@ -273,8 +332,65 @@ static void window_commit (
 	struct w3ld_window *window = wl_container_of(listener, window, commit);
 	/* Reply to the initial configure so the client can proceed to map; 0,0
 	 * lets it pick its own initial size before the layout sizes it. */
-	if (window->xdg_toplevel->base->initial_commit)
+	if (window->xdg_toplevel->base->initial_commit) {
 		wlr_xdg_toplevel_set_size(window->xdg_toplevel, 0, 0);
+		return;
+	}
+
+	/* float-app-size: adopt the size the app chose, re-centred. */
+	if (window->float_pending_app_size && window->floating) {
+		struct wlr_box *geometry = &window->xdg_toplevel->base->geometry;
+		if (geometry->width > 0 && geometry->height > 0) {
+			window->float_pending_app_size = false;
+			struct wlr_box *usable = &window->workspace->output->usable;
+			window->float_geom.width = geometry->width;
+			window->float_geom.height = geometry->height;
+			window->float_geom.x = usable->x
+				+ (usable->width - geometry->width) / 2;
+			window->float_geom.y = usable->y
+				+ (usable->height - geometry->height) / 2;
+			w3ld_arrange(window->server);
+		}
+	}
+}
+
+/* Client fullscreen requests are honored (games); maximize requests are
+ * honored only for floating windows — the layout owns tiled geometry (apps
+ * that remember being maximized would otherwise fill the screen on open). */
+static void window_request_fullscreen (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window =
+		wl_container_of(listener, window, request_fullscreen);
+	if (window->mapped) {
+		window->fullscreen = window->xdg_toplevel->requested.fullscreen;
+		if (window->fullscreen) {
+			window->maximized = false;
+			window->fake_fullscreen = false;
+		}
+		w3ld_window_inform_states(window);
+		w3ld_window_update_layer(window);
+		w3ld_arrange(window->server);
+	} else if (window->xdg_toplevel->base->initialized) {
+		wlr_xdg_surface_schedule_configure(window->xdg_toplevel->base);
+	}
+}
+
+static void window_request_maximize (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window =
+		wl_container_of(listener, window, request_maximize);
+	if (window->mapped && window->floating) {
+		window->maximized = window->xdg_toplevel->requested.maximized;
+		w3ld_window_inform_states(window);
+		w3ld_window_update_layer(window);
+		w3ld_arrange(window->server);
+	} else if (window->xdg_toplevel->base->initialized) {
+		wlr_xdg_surface_schedule_configure(window->xdg_toplevel->base);
+	}
 }
 
 static void window_status_changed (
@@ -306,6 +422,8 @@ static void window_destroy (
 	wl_list_remove(&window->destroy.link);
 	wl_list_remove(&window->set_title.link);
 	wl_list_remove(&window->set_app_id.link);
+	wl_list_remove(&window->request_fullscreen.link);
+	wl_list_remove(&window->request_maximize.link);
 	wlr_scene_node_destroy(&window->tree->node); /* borders; surface self-frees */
 	free(window);
 }
@@ -340,6 +458,12 @@ static void new_xdg_toplevel (
 	wl_signal_add(&toplevel->events.set_title, &window->set_title);
 	window->set_app_id.notify = window_app_id_changed;
 	wl_signal_add(&toplevel->events.set_app_id, &window->set_app_id);
+	window->request_fullscreen.notify = window_request_fullscreen;
+	wl_signal_add(&toplevel->events.request_fullscreen,
+			&window->request_fullscreen);
+	window->request_maximize.notify = window_request_maximize;
+	wl_signal_add(&toplevel->events.request_maximize,
+			&window->request_maximize);
 }
 
 /* -------------------------------------------------------------------- setup */

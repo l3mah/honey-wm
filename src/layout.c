@@ -45,14 +45,45 @@ static void place_window (
 			x, y, width, height, border);
 }
 
+static bool tiled_on (
+	struct w3ld_window *window,
+	struct w3ld_workspace *workspace
+) {
+	return window->mapped && window->workspace == workspace
+		&& w3ld_window_is_tiled(window);
+}
+
 static int count_tiled (struct w3ld_workspace *workspace) {
 	int count = 0;
 	struct w3ld_window *window;
 	wl_list_for_each(window, &workspace->output->server->windows, link) {
-		if (window->mapped && window->workspace == workspace)
+		if (tiled_on(window, workspace))
 			count++;
 	}
 	return count;
+}
+
+/* Place a visible non-tiled window according to its state. */
+static void place_untiled (
+	struct w3ld_window *window,
+	struct w3ld_output *output
+) {
+	struct w3ld_config *config = &output->server->config;
+
+	if (window->fullscreen || window->fake_fullscreen) {
+		struct wlr_box full;
+		wlr_output_layout_get_box(output->server->output_layout,
+				output->wlr_output, &full);
+		place_window(window, full.x, full.y, full.width, full.height, 0);
+	} else if (window->maximized) {
+		int border = config->smart_gaps ? 0 : config->border_size;
+		place_window(window, output->usable.x, output->usable.y,
+				output->usable.width, output->usable.height, border);
+	} else if (window->floating) {
+		place_window(window, window->float_geom.x, window->float_geom.y,
+				window->float_geom.width, window->float_geom.height,
+				config->border_size);
+	}
 }
 
 /* Place windows [start, start+count) of the active workspace into `box`, stacked
@@ -71,7 +102,7 @@ static void place_region (
 	int placed = 0;
 	struct w3ld_window *window;
 	wl_list_for_each(window, &output->server->windows, link) {
-		if (!window->mapped || window->workspace != output->active)
+		if (!tiled_on(window, output->active))
 			continue;
 		if (index >= start && index < start + count) {
 			int x, y, width, height;
@@ -101,6 +132,15 @@ static void arrange_output (struct w3ld_output *output) {
 	if (!output->active)
 		return;
 	struct w3ld_config *config = &output->server->config;
+
+	struct w3ld_window *state_window;
+	wl_list_for_each(state_window, &output->server->windows, link) {
+		if (state_window->mapped
+				&& state_window->workspace == output->active
+				&& !w3ld_window_is_tiled(state_window))
+			place_untiled(state_window, output);
+	}
+
 	int window_count = count_tiled(output->active);
 	if (window_count == 0)
 		return;

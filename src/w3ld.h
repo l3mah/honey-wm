@@ -41,10 +41,11 @@ enum w3ld_orientation {
 enum w3ld_scene_layer {
 	W3LD_LAYER_BACKGROUND,
 	W3LD_LAYER_BOTTOM,
-	W3LD_LAYER_TILED,
-	W3LD_LAYER_FLOATING,
-	W3LD_LAYER_TOP,
-	W3LD_LAYER_OVERLAY,
+	W3LD_LAYER_TILED,      /* tiled + maximized + fake-fullscreen windows */
+	W3LD_LAYER_FLOATING,   /* floats: above tiled/maximized, below bars */
+	W3LD_LAYER_TOP,        /* bars */
+	W3LD_LAYER_FULLSCREEN, /* exclusive fullscreen: covers bars */
+	W3LD_LAYER_OVERLAY,    /* lock screens, notifications */
 	W3LD_NUM_LAYERS,
 };
 
@@ -65,6 +66,7 @@ struct w3ld_config {
 	uint32_t border_color_inactive;
 	double float_width;
 	double float_height;
+	bool float_app_size; /* floats adopt the app's own preferred size */
 	/* behavior */
 	bool follow_mouse;
 	bool mouse_follows_focus;
@@ -225,8 +227,16 @@ struct w3ld_window {
 	struct wlr_scene_tree *tree;         /* parent, positioned at the tile origin */
 	struct wlr_scene_tree *surface_tree; /* xdg surface, inset by the border */
 	struct wlr_scene_rect *border[4];    /* top, bottom, left, right */
-	struct wlr_box geom; /* current tiled geometry */
+	struct wlr_box geom; /* current geometry */
 	bool mapped;
+
+	/* window states (mutually exclusive) */
+	bool floating;
+	struct wlr_box float_geom; /* geometry while floating */
+	bool float_pending_app_size; /* adopt the app's own size on next commit */
+	bool fullscreen;
+	bool maximized;
+	bool fake_fullscreen; /* fill output + tell the client, not exclusive */
 
 	struct wlr_foreign_toplevel_handle_v1 *foreign; /* taskbar handle, or NULL */
 
@@ -236,6 +246,8 @@ struct w3ld_window {
 	struct wl_listener destroy;
 	struct wl_listener set_title;
 	struct wl_listener set_app_id;
+	struct wl_listener request_fullscreen;
+	struct wl_listener request_maximize;
 	struct wl_listener foreign_activate;
 	struct wl_listener foreign_close;
 };
@@ -357,6 +369,16 @@ void w3ld_window_close (struct w3ld_window *window);
 void w3ld_window_finish_setup (struct w3ld_window *window);
 void w3ld_window_handle_map (struct w3ld_window *window);
 void w3ld_window_handle_unmap (struct w3ld_window *window);
+
+/* window states */
+bool w3ld_window_is_tiled (struct w3ld_window *window);
+void w3ld_window_update_layer (struct w3ld_window *window);
+void w3ld_window_inform_states (struct w3ld_window *window);
+void w3ld_window_clear_states (struct w3ld_window *window);
+void w3ld_action_toggle_float (struct w3ld_server *server);
+void w3ld_action_fullscreen (struct w3ld_server *server);
+void w3ld_action_maximize (struct w3ld_server *server);
+void w3ld_action_fake_fullscreen (struct w3ld_server *server);
 
 /* config */
 void w3ld_config_defaults (struct w3ld_config *config);

@@ -94,6 +94,8 @@ bool w3ld_config_set (
 		config->float_width = atof(value);
 	} else if (!strcmp(key, "float-height")) {
 		config->float_height = atof(value);
+	} else if (!strcmp(key, "float-app-size")) {
+		config->float_app_size = parse_bool(value);
 	} else if (!strcmp(key, "follow-mouse")) {
 		config->follow_mouse = parse_bool(value);
 	} else if (!strcmp(key, "mouse-follows-focus")) {

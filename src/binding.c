@@ -162,6 +162,14 @@ bool w3ld_action_run (
 			w3ld_spawn(arg);
 	} else if (!strcmp(verb, "close")) {
 		w3ld_action_close(server);
+	} else if (!strcmp(verb, "toggle-float")) {
+		w3ld_action_toggle_float(server);
+	} else if (!strcmp(verb, "fullscreen")) {
+		w3ld_action_fullscreen(server);
+	} else if (!strcmp(verb, "maximize")) {
+		w3ld_action_maximize(server);
+	} else if (!strcmp(verb, "fake-fullscreen")) {
+		w3ld_action_fake_fullscreen(server);
 	} else if (!strcmp(verb, "exit")) {
 		wl_display_terminate(server->display);
 	} else if (!strcmp(verb, "focus-next")) {

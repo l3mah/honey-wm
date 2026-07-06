@@ -70,6 +70,40 @@ static void x11_class (
 	w3ld_status_broadcast(window->server);
 }
 
+static void x11_request_fullscreen (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window =
+		wl_container_of(listener, window, request_fullscreen);
+	if (!window->mapped)
+		return;
+	window->fullscreen = window->xwayland_surface->fullscreen;
+	if (window->fullscreen) {
+		window->maximized = false;
+		window->fake_fullscreen = false;
+	}
+	w3ld_window_inform_states(window);
+	w3ld_window_update_layer(window);
+	w3ld_arrange(window->server);
+}
+
+static void x11_request_maximize (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window =
+		wl_container_of(listener, window, request_maximize);
+	/* Honored only for floating windows; the layout owns tiled geometry. */
+	if (!window->mapped || !window->floating)
+		return;
+	window->maximized = window->xwayland_surface->maximized_horz
+		|| window->xwayland_surface->maximized_vert;
+	w3ld_window_inform_states(window);
+	w3ld_window_update_layer(window);
+	w3ld_arrange(window->server);
+}
+
 static void managed_show (struct w3ld_xwayland_surface *xw) {
 	struct w3ld_server *server = xw->server;
 	struct wlr_xwayland_surface *xsurface = xw->xwayland_surface;
@@ -92,6 +126,12 @@ static void managed_show (struct w3ld_xwayland_surface *xw) {
 	wl_signal_add(&xsurface->events.set_title, &window->set_title);
 	window->set_app_id.notify = x11_class;
 	wl_signal_add(&xsurface->events.set_class, &window->set_app_id);
+	window->request_fullscreen.notify = x11_request_fullscreen;
+	wl_signal_add(&xsurface->events.request_fullscreen,
+			&window->request_fullscreen);
+	window->request_maximize.notify = x11_request_maximize;
+	wl_signal_add(&xsurface->events.request_maximize,
+			&window->request_maximize);
 }
 
 /* ---------------------------------------------------------------- listeners */
@@ -123,6 +163,8 @@ static void handle_dissociate (
 		wl_list_remove(&window->unmap.link);
 		wl_list_remove(&window->set_title.link);
 		wl_list_remove(&window->set_app_id.link);
+		wl_list_remove(&window->request_fullscreen.link);
+		wl_list_remove(&window->request_maximize.link);
 		wlr_scene_node_destroy(&window->surface_tree->node);
 		wlr_scene_node_destroy(&window->tree->node);
 		free(window);
