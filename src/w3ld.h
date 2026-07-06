@@ -106,6 +106,7 @@ struct w3ld_server {
 	struct w3ld_window *focused;
 
 	struct w3ld_config config;
+	struct wlr_color_transform *gamma_transform; /* night-light LUT, or NULL */
 
 	struct wl_list keybinds; /* w3ld_keybind.link */
 
@@ -348,6 +349,14 @@ void w3ld_layer_arrange (struct w3ld_output *output);
 
 /* good-citizen protocol managers */
 void w3ld_protocols_setup (struct w3ld_server *server);
+
+/* gamma / night-light */
+void w3ld_gamma_setup (struct w3ld_server *server);
+void w3ld_gamma_set (
+	struct w3ld_server *server,
+	double temperature,
+	double brightness
+);
 
 /* status stream */
 void w3ld_status_broadcast (struct w3ld_server *server);

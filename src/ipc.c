@@ -146,6 +146,27 @@ static void dispatch (
 		return;
 	}
 
+	if (!strncmp(line, "gamma", 5) && (line[5] == ' ' || line[5] == '\0')) {
+		char *arg = line + 5;
+		while (*arg == ' ')
+			arg++;
+		if (!*arg || !strcmp(arg, "off") || !strcmp(arg, "reset")) {
+			w3ld_gamma_set(server, 0, 1.0);
+			snprintf(reply, reply_size, "ok");
+			return;
+		}
+		double temperature = 0, brightness = 1.0;
+		int fields = sscanf(arg, "%lf %lf", &temperature, &brightness);
+		if (fields < 1 || temperature < 1000 || temperature > 10000) {
+			snprintf(reply, reply_size,
+					"error: usage: gamma <1000-10000> [brightness] | off");
+			return;
+		}
+		w3ld_gamma_set(server, temperature, brightness);
+		snprintf(reply, reply_size, "ok");
+		return;
+	}
+
 	if (!strcmp(line, "ping")) {
 		snprintf(reply, reply_size, "pong");
 		return;

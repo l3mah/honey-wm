@@ -21,7 +21,10 @@ static void output_frame (
 	struct wlr_scene_output *scene_output =
 		wlr_scene_get_scene_output(output->server->scene, output->wlr_output);
 
-	wlr_scene_output_commit(scene_output, NULL);
+	struct wlr_scene_output_state_options options = {
+		.color_transform = output->server->gamma_transform,
+	};
+	wlr_scene_output_commit(scene_output, &options);
 
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
