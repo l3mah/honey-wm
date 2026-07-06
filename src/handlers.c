@@ -72,8 +72,7 @@ static void handle_request_activate (
 
 	struct w3ld_window *window;
 	wl_list_for_each(window, &server->windows, link) {
-		if (window->mapped
-				&& window->xdg_toplevel->base->surface == event->surface) {
+		if (window->mapped && w3ld_window_surface(window) == event->surface) {
 			w3ld_focus_window(window);
 			return;
 		}
@@ -172,7 +171,7 @@ static void handle_new_constraint (
 bool w3ld_shortcuts_inhibited (struct w3ld_server *server) {
 	if (!server->focused)
 		return false;
-	struct wlr_surface *surface = server->focused->xdg_toplevel->base->surface;
+	struct wlr_surface *surface = w3ld_window_surface(server->focused);
 	struct w3ld_shortcuts_inhibitor *shortcuts;
 	wl_list_for_each(shortcuts, &server->shortcuts_inhibitors, link) {
 		if (shortcuts->inhibitor->active

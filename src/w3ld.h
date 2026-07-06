@@ -21,6 +21,7 @@
 
 struct w3ld_workspace;
 struct w3ld_layer_surface;
+struct wlr_xwayland_surface;
 
 enum w3ld_direction {
 	W3LD_DIR_LEFT,
@@ -82,6 +83,11 @@ struct w3ld_server {
 	struct wlr_backend *backend;
 	struct wlr_renderer *renderer;
 	struct wlr_allocator *allocator;
+
+	struct wlr_compositor *compositor;
+	struct wlr_xwayland *xwayland;
+	struct wl_listener xwayland_ready;
+	struct wl_listener new_xwayland_surface;
 
 	struct wlr_scene *scene;
 	struct wlr_scene_tree *layers[W3LD_NUM_LAYERS];
@@ -202,11 +208,18 @@ struct w3ld_workspace {
 
 /* ------------------------------------------------------------------- window */
 
+enum w3ld_window_type {
+	W3LD_WINDOW_XDG,
+	W3LD_WINDOW_X11,
+};
+
 struct w3ld_window {
 	struct wl_list link;
 	struct w3ld_server *server;
 	struct w3ld_workspace *workspace;
-	struct wlr_xdg_toplevel *xdg_toplevel;
+	enum w3ld_window_type type;
+	struct wlr_xdg_toplevel *xdg_toplevel;         /* XDG windows */
+	struct wlr_xwayland_surface *xwayland_surface; /* X11 windows */
 	struct wlr_scene_tree *tree;         /* parent, positioned at the tile origin */
 	struct wlr_scene_tree *surface_tree; /* xdg surface, inset by the border */
 	struct wlr_scene_rect *border[4];    /* top, bottom, left, right */
@@ -320,6 +333,28 @@ void w3ld_constraint_check (
 
 void w3ld_arrange (struct w3ld_server *server);
 void w3ld_spawn (const char *command);
+
+/* type-agnostic window accessors (XDG / X11) */
+struct wlr_surface *w3ld_window_surface (struct w3ld_window *window);
+const char *w3ld_window_title (struct w3ld_window *window);
+const char *w3ld_window_app_id (struct w3ld_window *window);
+void w3ld_window_configure (
+	struct w3ld_window *window,
+	int x,
+	int y,
+	int width,
+	int height
+);
+void w3ld_window_set_activated (
+	struct w3ld_window *window,
+	bool activated
+);
+void w3ld_window_close (struct w3ld_window *window);
+
+/* shared window lifecycle (called by the XDG and X11 paths) */
+void w3ld_window_finish_setup (struct w3ld_window *window);
+void w3ld_window_handle_map (struct w3ld_window *window);
+void w3ld_window_handle_unmap (struct w3ld_window *window);
 
 /* config */
 void w3ld_config_defaults (struct w3ld_config *config);

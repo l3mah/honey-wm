@@ -1,43 +1,73 @@
-/* Window (wlr_xdg_toplevel) lifecycle: creation, map/unmap, focus, teardown.
+/* Window lifecycle: creation, map/unmap, focus, teardown.
  *
- * Each toplevel gets a wlr_scene_tree. On map a window joins its output's active
- * workspace and the server window list (list order is tiling order). Focus is a
- * separate pointer plus keyboard/activation state; it tracks the focused output
- * and never reorders the tiling list.
+ * A window is an XDG toplevel or an X11 (XWayland) surface; the type-agnostic
+ * accessors hide the difference from layout, actions, and status. Each window
+ * is a border tree plus a surface tree in the TILED scene layer. On map a
+ * window joins its output's active workspace and the server window list (list
+ * order is tiling order). The XDG path lives here; the X11 path in xwayland.c
+ * calls the shared lifecycle.
  */
 #include <stdlib.h>
 
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
+#include <wlr/xwayland/xwayland.h>
 
 #include "w3ld.h"
 
-/* ------------------------------------------------------- foreign toplevel */
+/* ---------------------------------------------------------------- accessors */
 
-static void foreign_activate (
-	struct wl_listener *listener,
-	void *data
-) {
-	struct w3ld_window *window =
-		wl_container_of(listener, window, foreign_activate);
-	w3ld_focus_window(window);
+struct wlr_surface *w3ld_window_surface (struct w3ld_window *window) {
+	if (window->type == W3LD_WINDOW_X11)
+		return window->xwayland_surface->surface;
+	return window->xdg_toplevel->base->surface;
 }
 
-static void foreign_close (
-	struct wl_listener *listener,
-	void *data
-) {
-	struct w3ld_window *window =
-		wl_container_of(listener, window, foreign_close);
-	wlr_xdg_toplevel_send_close(window->xdg_toplevel);
+const char *w3ld_window_title (struct w3ld_window *window) {
+	const char *title = window->type == W3LD_WINDOW_X11
+		? window->xwayland_surface->title
+		: window->xdg_toplevel->title;
+	return title ? title : "";
 }
 
-static void foreign_update (struct w3ld_window *window) {
-	if (!window->foreign)
-		return;
-	wlr_foreign_toplevel_handle_v1_set_title(window->foreign,
-			window->xdg_toplevel->title ? window->xdg_toplevel->title : "");
-	wlr_foreign_toplevel_handle_v1_set_app_id(window->foreign,
-			window->xdg_toplevel->app_id ? window->xdg_toplevel->app_id : "");
+const char *w3ld_window_app_id (struct w3ld_window *window) {
+	const char *app_id = window->type == W3LD_WINDOW_X11
+		? window->xwayland_surface->class
+		: window->xdg_toplevel->app_id;
+	return app_id ? app_id : "";
+}
+
+/* Request the window's content box (position handled by the scene except for
+ * X11, whose configure carries coordinates too). */
+void w3ld_window_configure (
+	struct w3ld_window *window,
+	int x,
+	int y,
+	int width,
+	int height
+) {
+	wlr_scene_node_set_position(&window->surface_tree->node, x, y);
+	if (window->type == W3LD_WINDOW_X11)
+		wlr_xwayland_surface_configure(window->xwayland_surface, x, y, width,
+				height);
+	else
+		wlr_xdg_toplevel_set_size(window->xdg_toplevel, width, height);
+}
+
+void w3ld_window_set_activated (
+	struct w3ld_window *window,
+	bool activated
+) {
+	if (window->type == W3LD_WINDOW_X11)
+		wlr_xwayland_surface_activate(window->xwayland_surface, activated);
+	else
+		wlr_xdg_toplevel_set_activated(window->xdg_toplevel, activated);
+}
+
+void w3ld_window_close (struct w3ld_window *window) {
+	if (window->type == W3LD_WINDOW_X11)
+		wlr_xwayland_surface_close(window->xwayland_surface);
+	else
+		wlr_xdg_toplevel_send_close(window->xdg_toplevel);
 }
 
 /* -------------------------------------------------------------------- borders */
@@ -62,6 +92,35 @@ static void set_border_color (
 		wlr_scene_rect_set_color(window->border[i], rgba);
 }
 
+/* ------------------------------------------------------- foreign toplevel */
+
+static void foreign_activate (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window =
+		wl_container_of(listener, window, foreign_activate);
+	w3ld_focus_window(window);
+}
+
+static void foreign_close (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window =
+		wl_container_of(listener, window, foreign_close);
+	w3ld_window_close(window);
+}
+
+static void foreign_update (struct w3ld_window *window) {
+	if (!window->foreign)
+		return;
+	wlr_foreign_toplevel_handle_v1_set_title(window->foreign,
+			w3ld_window_title(window));
+	wlr_foreign_toplevel_handle_v1_set_app_id(window->foreign,
+			w3ld_window_app_id(window));
+}
+
 /* --------------------------------------------------------------------- focus */
 
 void w3ld_focus_window (struct w3ld_window *window) {
@@ -76,7 +135,7 @@ void w3ld_focus_window (struct w3ld_window *window) {
 		return;
 
 	if (server->focused) {
-		wlr_xdg_toplevel_set_activated(server->focused->xdg_toplevel, false);
+		w3ld_window_set_activated(server->focused, false);
 		set_border_color(server->focused, server->config.border_color_inactive);
 		if (server->focused->foreign)
 			wlr_foreign_toplevel_handle_v1_set_activated(
@@ -85,7 +144,7 @@ void w3ld_focus_window (struct w3ld_window *window) {
 
 	wlr_scene_node_raise_to_top(&window->tree->node);
 	wlr_scene_node_raise_to_top(&window->surface_tree->node);
-	wlr_xdg_toplevel_set_activated(window->xdg_toplevel, true);
+	w3ld_window_set_activated(window, true);
 	set_border_color(window, server->config.border_color_active);
 	if (window->foreign)
 		wlr_foreign_toplevel_handle_v1_set_activated(window->foreign, true);
@@ -93,7 +152,7 @@ void w3ld_focus_window (struct w3ld_window *window) {
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
 	if (keyboard) {
 		wlr_seat_keyboard_notify_enter(server->seat,
-				window->xdg_toplevel->base->surface,
+				w3ld_window_surface(window),
 				keyboard->keycodes, keyboard->num_keycodes,
 				&keyboard->modifiers);
 	}
@@ -115,20 +174,27 @@ void w3ld_focus_output_active (struct w3ld_output *output) {
 	}
 
 	if (server->focused) {
-		wlr_xdg_toplevel_set_activated(server->focused->xdg_toplevel, false);
+		w3ld_window_set_activated(server->focused, false);
 		server->focused = NULL;
 	}
 	wlr_seat_keyboard_notify_clear_focus(server->seat);
 	w3ld_status_broadcast(server);
 }
 
-/* ----------------------------------------------------------------- listeners */
+/* ---------------------------------------------------------- shared lifecycle */
 
-static void window_map (
-	struct wl_listener *listener,
-	void *data
-) {
-	struct w3ld_window *window = wl_container_of(listener, window, map);
+/* Create the border tree; the caller has already created surface_tree. */
+void w3ld_window_finish_setup (struct w3ld_window *window) {
+	struct w3ld_server *server = window->server;
+	float inactive[4];
+	color_to_float(server->config.border_color_inactive, inactive);
+	window->tree = wlr_scene_tree_create(server->layers[W3LD_LAYER_TILED]);
+	for (int i = 0; i < 4; i++)
+		window->border[i] = wlr_scene_rect_create(window->tree, 1, 1, inactive);
+	window->surface_tree->node.data = window;
+}
+
+void w3ld_window_handle_map (struct w3ld_window *window) {
 	struct w3ld_server *server = window->server;
 
 	window->mapped = true;
@@ -160,11 +226,7 @@ static void window_map (
 				window->geom.y + window->geom.height / 2);
 }
 
-static void window_unmap (
-	struct wl_listener *listener,
-	void *data
-) {
-	struct w3ld_window *window = wl_container_of(listener, window, unmap);
+void w3ld_window_handle_unmap (struct w3ld_window *window) {
 	struct w3ld_server *server = window->server;
 	struct w3ld_output *output =
 		window->workspace ? window->workspace->output : server->focused_output;
@@ -184,6 +246,24 @@ static void window_unmap (
 	w3ld_arrange(server);
 	if (output)
 		w3ld_focus_output_active(output);
+}
+
+/* ----------------------------------------------------------- XDG listeners */
+
+static void window_map (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window = wl_container_of(listener, window, map);
+	w3ld_window_handle_map(window);
+}
+
+static void window_unmap (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window = wl_container_of(listener, window, unmap);
+	w3ld_window_handle_unmap(window);
 }
 
 static void window_commit (
@@ -242,18 +322,11 @@ static void new_xdg_toplevel (
 
 	struct w3ld_window *window = calloc(1, sizeof *window);
 	window->server = server;
+	window->type = W3LD_WINDOW_XDG;
 	window->xdg_toplevel = toplevel;
-
-	/* Border tree (owned here) and the surface tree (owned by the scene helper,
-	 * destroyed with the surface) are siblings under the scene root. */
-	float inactive[4];
-	color_to_float(server->config.border_color_inactive, inactive);
-	window->tree = wlr_scene_tree_create(server->layers[W3LD_LAYER_TILED]);
-	for (int i = 0; i < 4; i++)
-		window->border[i] = wlr_scene_rect_create(window->tree, 1, 1, inactive);
 	window->surface_tree = wlr_scene_xdg_surface_create(
 			server->layers[W3LD_LAYER_TILED], toplevel->base);
-	window->surface_tree->node.data = window;
+	w3ld_window_finish_setup(window);
 
 	window->map.notify = window_map;
 	wl_signal_add(&toplevel->base->surface->events.map, &window->map);

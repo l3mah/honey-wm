@@ -100,10 +100,8 @@ static void format_window (
 	else if (output->active)
 		window = w3ld_workspace_first_window(output->active);
 
-	const char *app_id = window && window->xdg_toplevel->app_id
-		? window->xdg_toplevel->app_id : "";
-	const char *title = window && window->xdg_toplevel->title
-		? window->xdg_toplevel->title : "";
+	const char *app_id = window ? w3ld_window_app_id(window) : "";
+	const char *title = window ? w3ld_window_title(window) : "";
 	char escaped_app[256], escaped_title[512];
 	json_escape(app_id, escaped_app, sizeof escaped_app);
 	json_escape(title, escaped_title, sizeof escaped_title);

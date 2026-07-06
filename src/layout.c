@@ -39,12 +39,9 @@ static void place_window (
 		.height = height };
 	wlr_scene_node_set_position(&window->tree->node, x, y);
 	set_border_rects(window, width, height, border);
-	wlr_scene_node_set_position(&window->surface_tree->node, x + border,
-			y + border);
-	wlr_xdg_toplevel_set_size(window->xdg_toplevel, width - 2 * border,
-			height - 2 * border);
-	DBG("tile %s -> %d,%d %dx%d bw %d",
-			window->xdg_toplevel->app_id ? window->xdg_toplevel->app_id : "?",
+	w3ld_window_configure(window, x + border, y + border,
+			width - 2 * border, height - 2 * border);
+	DBG("tile %s -> %d,%d %dx%d bw %d", w3ld_window_app_id(window),
 			x, y, width, height, border);
 }
 

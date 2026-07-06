@@ -4,13 +4,16 @@
 # ephemeral shell:
 #
 #   nix-shell -p wlroots wayland wayland-protocols wayland-scanner libxkbcommon \
-#     pixman libinput libdrm pkg-config gcc gnumake --run make
+#     pixman libinput libdrm libxcb xcbutilwm pkg-config gcc gnumake --run make
 #
 # wlroots is the 0.20.1 nix attr (pkg-config name wlroots-0.20), matching river.
+# xcb + xcbutilwm are needed for the XWayland headers; the Xwayland binary is a
+# runtime dependency (nix `xwayland`), started lazily on the first X11 client.
 
 CC       ?= cc
 SCANNER  ?= wayland-scanner
-PKGS      = wlroots-0.20 wayland-server xkbcommon pixman-1 libinput
+PKGS      = wlroots-0.20 wayland-server xkbcommon pixman-1 libinput \
+            xcb xcb-ewmh xcb-icccm
 PKG_CFLAGS = $(shell pkg-config --cflags $(PKGS))
 PKG_LIBS   = $(shell pkg-config --libs $(PKGS))
 

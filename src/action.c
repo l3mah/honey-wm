@@ -31,7 +31,7 @@ void w3ld_switch_workspace (
 
 void w3ld_action_close (struct w3ld_server *server) {
 	if (server->focused)
-		wlr_xdg_toplevel_send_close(server->focused->xdg_toplevel);
+		w3ld_window_close(server->focused);
 }
 
 void w3ld_action_focus (

@@ -29,7 +29,7 @@ static bool tearing_wanted (struct w3ld_output *output) {
 			|| window->geom.height < output->usable.height)
 		return false;
 	return wlr_tearing_control_manager_v1_surface_hint_from_surface(
-			server->tearing_control, window->xdg_toplevel->base->surface)
+			server->tearing_control, w3ld_window_surface(window))
 		== WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC;
 }
 

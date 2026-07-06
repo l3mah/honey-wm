@@ -8,7 +8,11 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/wait.h>
 #include <unistd.h>
+
+#include <wlr/xwayland/server.h>
+#include <wlr/xwayland/xwayland.h>
 
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
@@ -45,6 +49,25 @@ void w3ld_dbg (const char *format, ...) {
 	fputc('\n', stderr);
 }
 
+/* ------------------------------------------------------------------ children */
+
+static struct w3ld_server *signal_server; /* for the SIGCHLD handler */
+
+/* Reap exited children, except the Xwayland process (wlroots waits on it). */
+static void reap_children (int signo) {
+	siginfo_t info;
+	pid_t xwayland_pid = signal_server && signal_server->xwayland
+		? signal_server->xwayland->server->pid : -1;
+	info.si_pid = 0;
+	while (waitid(P_ALL, 0, &info, WEXITED | WNOHANG | WNOWAIT) == 0
+			&& info.si_pid) {
+		if (info.si_pid == xwayland_pid)
+			break;
+		waitpid(info.si_pid, NULL, 0);
+		info.si_pid = 0;
+	}
+}
+
 /* ---------------------------------------------------------------------- main */
 
 int main (
@@ -52,9 +75,16 @@ int main (
 	char *argv[]
 ) {
 	wlr_log_init(WLR_INFO, NULL);
-	signal(SIGCHLD, SIG_IGN); /* reap spawned children automatically */
+
+	/* Reap spawned children with a handler, not SIG_IGN: an ignored SIGCHLD
+	 * survives exec, and Xwayland inheriting it breaks its xkbcomp Popen
+	 * (keymap compile reads back ECHILD and fails). The Xwayland child itself
+	 * is skipped — wlroots waits on it. */
+	struct sigaction child_action = { .sa_handler = reap_children };
+	sigaction(SIGCHLD, &child_action, NULL);
 
 	struct w3ld_server server = {0};
+	signal_server = &server;
 	w3ld_config_defaults(&server.config);
 	/* Ready before any arrange (which broadcasts) runs during backend start. */
 	wl_list_init(&server.ipc_clients);
@@ -82,7 +112,8 @@ int main (
 		return 1;
 	}
 
-	wlr_compositor_create(server.display, 5, server.renderer);
+	server.compositor = wlr_compositor_create(server.display, 5,
+			server.renderer);
 	wlr_subcompositor_create(server.display);
 	wlr_data_device_manager_create(server.display);
 
@@ -103,6 +134,7 @@ int main (
 	w3ld_handlers_setup(&server);
 	w3ld_gamma_setup(&server);
 	w3ld_ext_workspace_setup(&server);
+	w3ld_xwayland_setup(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);
 	if (!socket) {
