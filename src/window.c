@@ -527,15 +527,28 @@ static void window_commit (
 		return;
 	}
 
-	/* float-app-size: adopt the size the app chose, re-centred. */
-	if (window->float_pending_app_size && window->floating) {
-		struct wlr_box *geometry = &window->xdg_toplevel->base->geometry;
-		if (geometry->width > 0 && geometry->height > 0) {
-			window->float_pending_app_size = false;
-			w3ld_window_set_float_geom(window, geometry->width,
-					geometry->height);
-			w3ld_arrange(window->server);
-		}
+	if (!window->floating)
+		return;
+	struct wlr_box *geometry = &window->xdg_toplevel->base->geometry;
+	if (geometry->width <= 0 || geometry->height <= 0)
+		return;
+
+	/* float-app-size: adopt the app's chosen size, re-centred, once. */
+	if (window->float_pending_app_size) {
+		window->float_pending_app_size = false;
+		w3ld_window_set_float_geom(window, geometry->width, geometry->height);
+		w3ld_arrange(window->server);
+		return;
+	}
+
+	/* Track a client that resizes itself (e.g. a dialog changing tabs) so the
+	 * border keeps framing the actual window instead of the previous size. */
+	int border = window->server->config.border_size;
+	if (window->float_geom.width != geometry->width + 2 * border
+			|| window->float_geom.height != geometry->height + 2 * border) {
+		window->float_geom.width = geometry->width + 2 * border;
+		window->float_geom.height = geometry->height + 2 * border;
+		w3ld_arrange(window->server);
 	}
 }
 
