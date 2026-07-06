@@ -346,6 +346,9 @@ void w3ld_action_move_to_output (
 void w3ld_layer_setup (struct w3ld_server *server);
 void w3ld_layer_arrange (struct w3ld_output *output);
 
+/* good-citizen protocol managers */
+void w3ld_protocols_setup (struct w3ld_server *server);
+
 /* status stream */
 void w3ld_status_broadcast (struct w3ld_server *server);
 void w3ld_status_snapshot (

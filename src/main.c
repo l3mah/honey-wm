@@ -99,6 +99,7 @@ int main (
 	w3ld_seat_setup(&server);
 	w3ld_input_setup(&server);
 	w3ld_binding_setup(&server);
+	w3ld_protocols_setup(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);
 	if (!socket) {
