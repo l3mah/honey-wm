@@ -1,8 +1,8 @@
 /* Configuration: defaults and the `set` command.
  *
- * Settings live in a single w3ld_config on the server. The lakectl-style grammar
- * is mirrored: `set <key> <value>`. Layout keys re-tile on change; behavior keys
- * just update the flag. Colors are 0xRRGGBBAA.
+ * Settings live in a single w3ld_config on the server; `set <key> <value>`
+ * changes one and re-arranges. Colors are 0xRRGGBBAA. Per-workspace overrides
+ * (`set-ws`) live on the workspace and win over these globals.
  */
 #include <stdbool.h>
 #include <stdlib.h>

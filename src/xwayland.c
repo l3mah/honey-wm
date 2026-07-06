@@ -76,16 +76,7 @@ static void x11_request_fullscreen (
 ) {
 	struct w3ld_window *window =
 		wl_container_of(listener, window, request_fullscreen);
-	if (!window->mapped)
-		return;
-	window->fullscreen = window->xwayland_surface->fullscreen;
-	if (window->fullscreen) {
-		window->maximized = false;
-		window->fake_fullscreen = false;
-	}
-	w3ld_window_inform_states(window);
-	w3ld_window_update_layer(window);
-	w3ld_arrange(window->server);
+	w3ld_window_handle_request_fullscreen(window);
 }
 
 static void x11_request_maximize (
@@ -94,14 +85,7 @@ static void x11_request_maximize (
 ) {
 	struct w3ld_window *window =
 		wl_container_of(listener, window, request_maximize);
-	/* Honored only for floating windows; the layout owns tiled geometry. */
-	if (!window->mapped || !window->floating || window->suppress_maximize)
-		return;
-	window->maximized = window->xwayland_surface->maximized_horz
-		|| window->xwayland_surface->maximized_vert;
-	w3ld_window_inform_states(window);
-	w3ld_window_update_layer(window);
-	w3ld_arrange(window->server);
+	w3ld_window_handle_request_maximize(window);
 }
 
 static void managed_show (struct w3ld_xwayland_surface *xw) {

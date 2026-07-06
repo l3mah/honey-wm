@@ -1,5 +1,5 @@
 /* Actions: focus, workspace switching, and moving windows across workspaces and
- * outputs. Invoked by keybinds now and by the IPC layer in M3.
+ * outputs. Invoked by keybindings and by IPC commands alike.
  *
  * Actions operate on the focused output and focused window. They mutate window
  * workspace assignments and the active workspace, then re-arrange and re-focus.
@@ -267,18 +267,7 @@ void w3ld_float_seed (struct w3ld_window *window) {
 			window->float_pending_app_size = true;
 		}
 	}
-	window->float_geom = (struct wlr_box){
-		.x = usable->x + (usable->width - width) / 2,
-		.y = usable->y + (usable->height - height) / 2,
-		.width = width,
-		.height = height,
-	};
-}
-
-static void apply_state_change (struct w3ld_window *window) {
-	w3ld_window_inform_states(window);
-	w3ld_window_update_layer(window);
-	w3ld_arrange(window->server);
+	w3ld_window_set_float_geom(window, width, height);
 }
 
 void w3ld_action_toggle_float (struct w3ld_server *server) {
@@ -290,7 +279,7 @@ void w3ld_action_toggle_float (struct w3ld_server *server) {
 	window->floating = enable;
 	if (enable)
 		w3ld_float_seed(window);
-	apply_state_change(window);
+	w3ld_window_apply_state(window);
 }
 
 void w3ld_action_fullscreen (struct w3ld_server *server) {
@@ -300,7 +289,7 @@ void w3ld_action_fullscreen (struct w3ld_server *server) {
 	bool enable = !window->fullscreen;
 	w3ld_window_clear_states(window);
 	window->fullscreen = enable;
-	apply_state_change(window);
+	w3ld_window_apply_state(window);
 }
 
 void w3ld_action_maximize (struct w3ld_server *server) {
@@ -310,7 +299,7 @@ void w3ld_action_maximize (struct w3ld_server *server) {
 	bool enable = !window->maximized;
 	w3ld_window_clear_states(window);
 	window->maximized = enable;
-	apply_state_change(window);
+	w3ld_window_apply_state(window);
 }
 
 void w3ld_action_fake_fullscreen (struct w3ld_server *server) {
@@ -320,7 +309,7 @@ void w3ld_action_fake_fullscreen (struct w3ld_server *server) {
 	bool enable = !window->fake_fullscreen;
 	w3ld_window_clear_states(window);
 	window->fake_fullscreen = enable;
-	apply_state_change(window);
+	w3ld_window_apply_state(window);
 }
 
 /* ---------------------------------------------------------------- directional */

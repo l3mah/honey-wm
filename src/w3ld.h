@@ -52,9 +52,8 @@ enum w3ld_scene_layer {
 
 /* ------------------------------------------------------------------- layouts */
 
-/* A layout is a pure function of the tiled-window array and its parameters; it
- * assigns each window's geometry via the placement callback the driver hands
- * it. Adding a layout = one arrange() plus a registry entry in layout.c. */
+/* A layout is a pure function of the tiled-window array and its parameters.
+ * Adding a layout = one arrange() plus a registry entry in layout.c. */
 struct w3ld_layout_ctx {
 	struct w3ld_window **windows;
 	int count;
@@ -232,7 +231,7 @@ struct w3ld_output {
 	struct wl_list link;
 	struct w3ld_server *server;
 	struct wlr_output *wlr_output;
-	struct wlr_box usable; /* layout geometry; layer-shell reserves in M3 */
+	struct wlr_box usable; /* layout geometry minus layer-shell exclusive zones */
 
 	struct wl_list workspaces; /* w3ld_workspace.link, sorted by number */
 	struct w3ld_workspace *active;
@@ -464,6 +463,17 @@ bool w3ld_window_is_tiled (struct w3ld_window *window);
 void w3ld_window_update_layer (struct w3ld_window *window);
 void w3ld_window_inform_states (struct w3ld_window *window);
 void w3ld_window_clear_states (struct w3ld_window *window);
+/* inform + relayer + rearrange after a state change */
+void w3ld_window_apply_state (struct w3ld_window *window);
+/* centre a floating geometry of the given size on the window's output */
+void w3ld_window_set_float_geom (
+	struct w3ld_window *window,
+	int width,
+	int height
+);
+/* client state requests, shared by the XDG and X11 paths */
+void w3ld_window_handle_request_fullscreen (struct w3ld_window *window);
+void w3ld_window_handle_request_maximize (struct w3ld_window *window);
 void w3ld_float_seed (struct w3ld_window *window);
 void w3ld_action_toggle_float (struct w3ld_server *server);
 void w3ld_action_fullscreen (struct w3ld_server *server);
@@ -552,7 +562,7 @@ struct w3ld_output *w3ld_output_by_name (
 );
 void w3ld_warp_to_focus (struct w3ld_server *server);
 
-/* actions (called by keybinds now, by IPC in M3) */
+/* actions (invoked by keybindings and IPC commands) */
 void w3ld_action_close (struct w3ld_server *server);
 void w3ld_action_focus (
 	struct w3ld_server *server,

@@ -114,6 +114,61 @@ void w3ld_window_clear_states (struct w3ld_window *window) {
 	w3ld_window_update_layer(window);
 }
 
+void w3ld_window_apply_state (struct w3ld_window *window) {
+	w3ld_window_inform_states(window);
+	w3ld_window_update_layer(window);
+	w3ld_arrange(window->server);
+}
+
+void w3ld_window_set_float_geom (
+	struct w3ld_window *window,
+	int width,
+	int height
+) {
+	struct wlr_box *usable = &window->workspace->output->usable;
+	window->float_geom = (struct wlr_box){
+		.x = usable->x + (usable->width - width) / 2,
+		.y = usable->y + (usable->height - height) / 2,
+		.width = width,
+		.height = height,
+	};
+}
+
+/* Fullscreen requests are honored (games). Maximize requests are honored only
+ * for floating windows — the layout owns tiled geometry (apps that remember
+ * being maximized would otherwise fill the screen on open) — and never with a
+ * suppress-maximize rule. */
+void w3ld_window_handle_request_fullscreen (struct w3ld_window *window) {
+	bool wanted = window->type == W3LD_WINDOW_X11
+		? window->xwayland_surface->fullscreen
+		: window->xdg_toplevel->requested.fullscreen;
+	if (window->mapped) {
+		window->fullscreen = wanted;
+		if (wanted) {
+			window->maximized = false;
+			window->fake_fullscreen = false;
+		}
+		w3ld_window_apply_state(window);
+	} else if (window->type == W3LD_WINDOW_XDG
+			&& window->xdg_toplevel->base->initialized) {
+		wlr_xdg_surface_schedule_configure(window->xdg_toplevel->base);
+	}
+}
+
+void w3ld_window_handle_request_maximize (struct w3ld_window *window) {
+	bool wanted = window->type == W3LD_WINDOW_X11
+		? (window->xwayland_surface->maximized_horz
+				|| window->xwayland_surface->maximized_vert)
+		: window->xdg_toplevel->requested.maximized;
+	if (window->mapped && window->floating && !window->suppress_maximize) {
+		window->maximized = wanted;
+		w3ld_window_apply_state(window);
+	} else if (window->type == W3LD_WINDOW_XDG
+			&& window->xdg_toplevel->base->initialized) {
+		wlr_xdg_surface_schedule_configure(window->xdg_toplevel->base);
+	}
+}
+
 /* -------------------------------------------------------------------- borders */
 
 static void color_to_float (
@@ -301,11 +356,7 @@ static bool apply_rules (struct w3ld_window *window) {
 				: rule->float_h > 0 ? (int)(usable->height * rule->float_h) : 0;
 			if (width > 0 && height > 0) {
 				window->float_pending_app_size = false;
-				window->float_geom.width = width;
-				window->float_geom.height = height;
-				window->float_geom.x = usable->x + (usable->width - width) / 2;
-				window->float_geom.y = usable->y
-					+ (usable->height - height) / 2;
+				w3ld_window_set_float_geom(window, width, height);
 			}
 			break;
 		}
@@ -462,39 +513,20 @@ static void window_commit (
 		struct wlr_box *geometry = &window->xdg_toplevel->base->geometry;
 		if (geometry->width > 0 && geometry->height > 0) {
 			window->float_pending_app_size = false;
-			struct wlr_box *usable = &window->workspace->output->usable;
-			window->float_geom.width = geometry->width;
-			window->float_geom.height = geometry->height;
-			window->float_geom.x = usable->x
-				+ (usable->width - geometry->width) / 2;
-			window->float_geom.y = usable->y
-				+ (usable->height - geometry->height) / 2;
+			w3ld_window_set_float_geom(window, geometry->width,
+					geometry->height);
 			w3ld_arrange(window->server);
 		}
 	}
 }
 
-/* Client fullscreen requests are honored (games); maximize requests are
- * honored only for floating windows — the layout owns tiled geometry (apps
- * that remember being maximized would otherwise fill the screen on open). */
 static void window_request_fullscreen (
 	struct wl_listener *listener,
 	void *data
 ) {
 	struct w3ld_window *window =
 		wl_container_of(listener, window, request_fullscreen);
-	if (window->mapped) {
-		window->fullscreen = window->xdg_toplevel->requested.fullscreen;
-		if (window->fullscreen) {
-			window->maximized = false;
-			window->fake_fullscreen = false;
-		}
-		w3ld_window_inform_states(window);
-		w3ld_window_update_layer(window);
-		w3ld_arrange(window->server);
-	} else if (window->xdg_toplevel->base->initialized) {
-		wlr_xdg_surface_schedule_configure(window->xdg_toplevel->base);
-	}
+	w3ld_window_handle_request_fullscreen(window);
 }
 
 static void window_request_maximize (
@@ -503,14 +535,7 @@ static void window_request_maximize (
 ) {
 	struct w3ld_window *window =
 		wl_container_of(listener, window, request_maximize);
-	if (window->mapped && window->floating && !window->suppress_maximize) {
-		window->maximized = window->xdg_toplevel->requested.maximized;
-		w3ld_window_inform_states(window);
-		w3ld_window_update_layer(window);
-		w3ld_arrange(window->server);
-	} else if (window->xdg_toplevel->base->initialized) {
-		wlr_xdg_surface_schedule_configure(window->xdg_toplevel->base);
-	}
+	w3ld_window_handle_request_maximize(window);
 }
 
 static void window_status_changed (

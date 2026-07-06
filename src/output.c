@@ -3,7 +3,7 @@
  * Each wlr_output is enabled at its preferred mode, added to the output layout,
  * given a wlr_scene_output that composites the scene every frame, and seeded
  * with workspace 1. Its usable box is the layout geometry (layer-shell will
- * reserve exclusive zones in M3). Removal reassigns the output's windows to a
+ * reserve exclusive zones). Removal reassigns the output's windows to a
  * surviving output.
  */
 #include <stdlib.h>

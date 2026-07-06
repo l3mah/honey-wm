@@ -1,9 +1,11 @@
 /* Seat: wlr_seat, cursor, keyboards, and the input event handlers.
  *
- * Keyboards build a default xkb keymap and feed the seat. A small hardcoded
- * keybinding table drives M1 (spawn / close / focus / exit); dynamic bindings
- * arrive with the IPC layer in M3. The pointer moves the cursor and forwards
- * enter/motion/button/axis to the surface under it.
+ * Keyboards feed the seat and dispatch keybindings (matched at keysym level 0
+ * so shifted binds resolve to the base symbol). The pointer moves the cursor,
+ * drives focus (follow-mouse, click-to-focus), forwards events to the surface
+ * under it, and runs the interactive move/resize grabs: super+drag, border
+ * drags (resize-on-border), drop-at-cursor re-tiling, and super+scroll
+ * workspace cycling.
  */
 #include <stdlib.h>
 #include <unistd.h>

@@ -1,10 +1,13 @@
 /* Control socket and config execution.
  *
  * A unix socket at $XDG_RUNTIME_DIR/w3ld-$WAYLAND_DISPLAY.sock accepts one
- * command per connection from w3ldctl, integrated into the Wayland event loop.
- * The command grammar is `map`/`unmap`/`ping`/`exit` plus any action name as a
- * direct verb. The config init (a shell script of w3ldctl calls) is run at
- * startup; without one, a default set of bindings is loaded.
+ * command per connection from w3ldctl, integrated into the Wayland event loop
+ * (`subscribe` keeps its connection open as a status stream). The grammar:
+ * set / set-ws / map / unmap / rule / windows / kb-layout / kb-repeat / input /
+ * output / gamma / workspace-name / reload / ping / exit, plus any action name
+ * as a direct verb. The config init (a shell script of w3ldctl calls) runs at
+ * startup and on `reload`, with its errors captured and shown in a floating
+ * terminal (error-window); without an init, default bindings are loaded.
  */
 #include <errno.h>
 #include <stdio.h>
