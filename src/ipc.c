@@ -146,6 +146,15 @@ static void dispatch (
 		return;
 	}
 
+	if (!strncmp(line, "output ", 7)) {
+		char error[256];
+		if (w3ld_output_command(server, line + 7, error, sizeof error))
+			snprintf(reply, reply_size, "ok");
+		else
+			snprintf(reply, reply_size, "error: %s", error);
+		return;
+	}
+
 	if (!strncmp(line, "gamma", 5) && (line[5] == ' ' || line[5] == '\0')) {
 		char *arg = line + 5;
 		while (*arg == ' ')

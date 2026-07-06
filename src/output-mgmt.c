@@ -5,6 +5,11 @@
  * bars and screenshot tools. The current layout is advertised to clients on
  * every change; client apply/test requests are validated and committed.
  */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 
@@ -125,6 +130,120 @@ static void output_layout_change (
 }
 
 /* -------------------------------------------------------------------- setup */
+
+/* ---------------------------------------------------------- w3ldctl command */
+
+static struct w3ld_output *output_by_name (
+	struct w3ld_server *server,
+	const char *name
+) {
+	struct w3ld_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		if (!strcmp(output->wlr_output->name, name))
+			return output;
+	}
+	return NULL;
+}
+
+/* `output <name> [mode WxH[@R]] [scale F] [pos X,Y] [transform 0-7]
+ *  [adaptive-sync on|off] [on|off]` — apply native output config. */
+bool w3ld_output_command (
+	struct w3ld_server *server,
+	char *args,
+	char *error,
+	size_t error_size
+) {
+	char *save = NULL;
+	char *name = strtok_r(args, " \t", &save);
+	if (!name) {
+		snprintf(error, error_size, "usage: output <name> [mode WxH[@R]]"
+				" [scale F] [pos X,Y] [transform 0-7] [on|off]");
+		return false;
+	}
+	struct w3ld_output *output = output_by_name(server, name);
+	if (!output) {
+		snprintf(error, error_size, "unknown output '%s'", name);
+		return false;
+	}
+	struct wlr_output *wlr_output = output->wlr_output;
+
+	struct wlr_output_state state;
+	wlr_output_state_init(&state);
+	int pos_x = 0, pos_y = 0;
+	bool set_pos = false;
+	bool enabled = true;
+
+	char *key;
+	while ((key = strtok_r(NULL, " \t", &save))) {
+		if (!strcmp(key, "off")) {
+			wlr_output_state_set_enabled(&state, false);
+			enabled = false;
+			continue;
+		}
+		if (!strcmp(key, "on")) {
+			wlr_output_state_set_enabled(&state, true);
+			continue;
+		}
+		char *value = strtok_r(NULL, " \t", &save);
+		if (!value) {
+			snprintf(error, error_size, "missing value for '%s'", key);
+			wlr_output_state_finish(&state);
+			return false;
+		}
+		if (!strcmp(key, "mode")) {
+			int width, height, refresh = 0;
+			if (sscanf(value, "%dx%d@%d", &width, &height, &refresh) < 2) {
+				snprintf(error, error_size, "bad mode '%s'", value);
+				wlr_output_state_finish(&state);
+				return false;
+			}
+			struct wlr_output_mode *mode, *match = NULL;
+			wl_list_for_each(mode, &wlr_output->modes, link) {
+				if (mode->width == width && mode->height == height
+						&& (refresh == 0 || mode->refresh / 1000 == refresh))
+					match = mode;
+			}
+			if (match)
+				wlr_output_state_set_mode(&state, match);
+			else
+				wlr_output_state_set_custom_mode(&state, width, height,
+						refresh * 1000);
+		} else if (!strcmp(key, "scale")) {
+			wlr_output_state_set_scale(&state, atof(value));
+		} else if (!strcmp(key, "pos") || !strcmp(key, "position")) {
+			if (sscanf(value, "%d,%d", &pos_x, &pos_y) != 2) {
+				snprintf(error, error_size, "bad position '%s'", value);
+				wlr_output_state_finish(&state);
+				return false;
+			}
+			set_pos = true;
+		} else if (!strcmp(key, "transform")) {
+			wlr_output_state_set_transform(&state, atoi(value));
+		} else if (!strcmp(key, "adaptive-sync")) {
+			wlr_output_state_set_adaptive_sync_enabled(&state,
+					!strcasecmp(value, "on") || !strcasecmp(value, "true"));
+		} else {
+			snprintf(error, error_size, "unknown output key '%s'", key);
+			wlr_output_state_finish(&state);
+			return false;
+		}
+	}
+
+	if (!wlr_output_commit_state(wlr_output, &state)) {
+		snprintf(error, error_size, "commit failed");
+		wlr_output_state_finish(&state);
+		return false;
+	}
+	wlr_output_state_finish(&state);
+
+	if (!enabled)
+		wlr_output_layout_remove(server->output_layout, wlr_output);
+	else if (set_pos)
+		wlr_output_layout_add(server->output_layout, wlr_output, pos_x, pos_y);
+	else
+		wlr_output_layout_add_auto(server->output_layout, wlr_output);
+	return true;
+}
 
 void w3ld_output_manager_setup (struct w3ld_server *server) {
 	server->output_manager = wlr_output_manager_v1_create(server->display);

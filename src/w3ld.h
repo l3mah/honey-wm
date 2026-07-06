@@ -280,6 +280,12 @@ void w3ld_dbg (const char *format, ...);
 
 void w3ld_output_setup (struct w3ld_server *server);
 void w3ld_output_manager_setup (struct w3ld_server *server);
+bool w3ld_output_command (
+	struct w3ld_server *server,
+	char *args,
+	char *error,
+	size_t error_size
+);
 void w3ld_window_setup (struct w3ld_server *server);
 void w3ld_seat_setup (struct w3ld_server *server);
 void w3ld_seat_new_keyboard (
