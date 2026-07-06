@@ -42,25 +42,15 @@ static void output_frame (
 	struct wlr_scene_output *scene_output =
 		wlr_scene_get_scene_output(output->server->scene, output->wlr_output);
 
+	/* Gamma is committed separately as a sticky CRTC property (gamma.c). */
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
 	if (wlr_scene_output_build_state(scene_output, &state, NULL)) {
-		/* The night-light LUT rides the output state: the DRM backend
-		 * offloads a 3x1d transform to the CRTC gamma hardware, so it works
-		 * on any renderer (GLES2 has no shader transform support). Backends
-		 * without gamma hardware reject it; retry bare. */
-		if (output->server->gamma_transform)
-			wlr_output_state_set_color_transform(&state,
-					output->server->gamma_transform);
 		if (tearing_wanted(output))
 			state.tearing_page_flip = true;
-
 		if (!wlr_output_commit_state(output->wlr_output, &state)) {
 			state.tearing_page_flip = false;
-			if (!wlr_output_commit_state(output->wlr_output, &state)) {
-				wlr_output_state_set_color_transform(&state, NULL);
-				wlr_output_commit_state(output->wlr_output, &state);
-			}
+			wlr_output_commit_state(output->wlr_output, &state);
 		}
 	}
 	wlr_output_state_finish(&state);
@@ -104,6 +94,8 @@ static void output_destroy (
 	}
 	if (output->ext_group)
 		wlr_ext_workspace_group_handle_v1_destroy(output->ext_group);
+	if (output->gamma_transform)
+		wlr_color_transform_unref(output->gamma_transform);
 	free(output->status_workspaces);
 	free(output->status_window);
 
@@ -167,6 +159,9 @@ static void handle_new_output (
 	output->active = w3ld_workspace_get(output, 1);
 	if (!server->focused_output)
 		server->focused_output = output;
+
+	if (server->gamma_temperature > 0)
+		w3ld_gamma_update_output(output); /* hotplugged during night light */
 
 	LOG("new output %s %dx%d at %d,%d", wlr_output->name,
 			output->usable.width, output->usable.height,

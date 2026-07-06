@@ -116,7 +116,8 @@ struct w3ld_server {
 	struct w3ld_window *focused;
 
 	struct w3ld_config config;
-	struct wlr_color_transform *gamma_transform; /* night-light LUT, or NULL */
+	double gamma_temperature; /* night-light target; 0 = neutral/off */
+	double gamma_brightness;
 
 	struct wl_list keybinds; /* w3ld_keybind.link */
 
@@ -188,6 +189,7 @@ struct w3ld_output {
 
 	struct wl_list layer_surfaces; /* w3ld_layer_surface.link */
 	struct wlr_ext_workspace_group_handle_v1 *ext_group;
+	struct wlr_color_transform *gamma_transform; /* sized to this CRTC, or NULL */
 
 	char *status_workspaces; /* last broadcast line, for diffing */
 	char *status_window;
@@ -450,6 +452,7 @@ void w3ld_gamma_set (
 	double temperature,
 	double brightness
 );
+void w3ld_gamma_update_output (struct w3ld_output *output);
 
 /* ext-workspace protocol */
 void w3ld_ext_workspace_setup (struct w3ld_server *server);
