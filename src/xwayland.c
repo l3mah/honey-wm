@@ -6,6 +6,7 @@
  * redirect surfaces (menus, tooltips, drag icons) are unmanaged: shown at their
  * own coordinates in the TOP layer, never tiled or focused.
  */
+#include <math.h>
 #include <stdlib.h>
 
 #include <wlr/types/wlr_compositor.h>
@@ -23,17 +24,95 @@ struct w3ld_xwayland_surface {
 	struct wl_listener dissociate;
 	struct wl_listener request_configure;
 	struct wl_listener destroy;
+	struct wl_listener unmanaged_commit;
+	struct wl_listener set_geometry;
 };
 
+/* ------------------------------------------------------------------- scaling */
+
+/* The X11 render scale: X11 windows are configured at logical * scale physical
+ * pixels and their buffers displayed at logical size — 1:1 (crisp) on outputs
+ * of exactly this scale, resampled elsewhere. X11 has a single coordinate
+ * space, so one scale serves all monitors. */
+double w3ld_xwayland_effective_scale (struct w3ld_server *server) {
+	if (server->config.xwayland_scale_auto) {
+		double best = 1.0;
+		struct w3ld_output *output;
+		wl_list_for_each(output, &server->outputs, link) {
+			if (output->wlr_output->scale > best)
+				best = output->wlr_output->scale;
+		}
+		return best;
+	}
+	return server->config.xwayland_scale > 0
+		? server->config.xwayland_scale : 1.0;
+}
+
+static void buffer_descale (
+	struct wlr_scene_buffer *buffer,
+	int sx,
+	int sy,
+	void *data
+) {
+	double scale = *(double *)data;
+	if (buffer->buffer)
+		wlr_scene_buffer_set_dest_size(buffer,
+				(int)round(buffer->buffer->width / scale),
+				(int)round(buffer->buffer->height / scale));
+}
+
+/* Runs after the scene's own commit handler (registered earlier), so this
+ * dest-size override wins each commit. */
+static void descale_surface_tree (
+	struct w3ld_server *server,
+	struct wlr_scene_tree *tree
+) {
+	double scale = w3ld_xwayland_effective_scale(server);
+	if (scale == 1.0)
+		return;
+	wlr_scene_node_for_each_buffer(&tree->node, buffer_descale, &scale);
+}
+
 /* ---------------------------------------------------------------- unmanaged */
+
+/* Override-redirect coordinates are in X11's (scaled) space. */
+static void unmanaged_position (struct w3ld_xwayland_surface *xw) {
+	double scale = w3ld_xwayland_effective_scale(xw->server);
+	wlr_scene_node_set_position(&xw->unmanaged_tree->node,
+			(int)round(xw->xwayland_surface->x / scale),
+			(int)round(xw->xwayland_surface->y / scale));
+}
+
+static void unmanaged_commit (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_xwayland_surface *xw =
+		wl_container_of(listener, xw, unmanaged_commit);
+	descale_surface_tree(xw->server, xw->unmanaged_tree);
+}
+
+static void handle_set_geometry (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_xwayland_surface *xw =
+		wl_container_of(listener, xw, set_geometry);
+	if (xw->unmanaged_tree)
+		unmanaged_position(xw);
+}
 
 static void unmanaged_show (struct w3ld_xwayland_surface *xw) {
 	struct wlr_xwayland_surface *xsurface = xw->xwayland_surface;
 	xw->unmanaged_tree = wlr_scene_tree_create(
 			xw->server->layers[W3LD_LAYER_TOP]);
 	wlr_scene_subsurface_tree_create(xw->unmanaged_tree, xsurface->surface);
-	wlr_scene_node_set_position(&xw->unmanaged_tree->node, xsurface->x,
-			xsurface->y);
+	unmanaged_position(xw);
+
+	xw->unmanaged_commit.notify = unmanaged_commit;
+	wl_signal_add(&xsurface->surface->events.commit, &xw->unmanaged_commit);
+	xw->set_geometry.notify = handle_set_geometry;
+	wl_signal_add(&xsurface->events.set_geometry, &xw->set_geometry);
 }
 
 /* ----------------------------------------------------------------- managed */
@@ -68,6 +147,14 @@ static void x11_class (
 ) {
 	struct w3ld_window *window = wl_container_of(listener, window, set_app_id);
 	w3ld_status_broadcast(window->server);
+}
+
+static void x11_commit (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window = wl_container_of(listener, window, commit);
+	descale_surface_tree(window->server, window->surface_tree);
 }
 
 static void x11_request_fullscreen (
@@ -106,6 +193,8 @@ static void managed_show (struct w3ld_xwayland_surface *xw) {
 	wl_signal_add(&xsurface->surface->events.map, &window->map);
 	window->unmap.notify = x11_unmap;
 	wl_signal_add(&xsurface->surface->events.unmap, &window->unmap);
+	window->commit.notify = x11_commit;
+	wl_signal_add(&xsurface->surface->events.commit, &window->commit);
 	window->set_title.notify = x11_title;
 	wl_signal_add(&xsurface->events.set_title, &window->set_title);
 	window->set_app_id.notify = x11_class;
@@ -145,6 +234,7 @@ static void handle_dissociate (
 			w3ld_window_handle_unmap(window);
 		wl_list_remove(&window->map.link);
 		wl_list_remove(&window->unmap.link);
+		wl_list_remove(&window->commit.link);
 		wl_list_remove(&window->set_title.link);
 		wl_list_remove(&window->set_app_id.link);
 		wl_list_remove(&window->request_fullscreen.link);
@@ -156,6 +246,8 @@ static void handle_dissociate (
 		xw->window = NULL;
 	}
 	if (xw->unmanaged_tree) {
+		wl_list_remove(&xw->unmanaged_commit.link);
+		wl_list_remove(&xw->set_geometry.link);
 		wlr_scene_node_destroy(&xw->unmanaged_tree->node);
 		xw->unmanaged_tree = NULL;
 	}

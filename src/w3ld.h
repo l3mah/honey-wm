@@ -114,6 +114,8 @@ struct w3ld_config {
 	double inactive_opacity;
 	double dim_inactive; /* 0 = off, else dim strength 0..1 */
 	bool error_window;   /* show config errors in a floating terminal */
+	double xwayland_scale; /* 0 = off, else the X11 render scale */
+	bool xwayland_scale_auto; /* follow the highest output scale */
 };
 
 /* ------------------------------------------------------------------- server */
@@ -665,7 +667,8 @@ bool w3ld_input_rule_add (
 	const char *value
 );
 
-/* Stubs filled in later milestones. */
+double w3ld_xwayland_effective_scale (struct w3ld_server *server);
+
 void w3ld_decoration_setup (struct w3ld_server *server);
 void w3ld_xwayland_setup (struct w3ld_server *server);
 

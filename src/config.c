@@ -135,6 +135,19 @@ bool w3ld_config_set (
 		config->dim_inactive = atof(value);
 	} else if (!strcmp(key, "error-window")) {
 		config->error_window = parse_bool(value);
+	} else if (!strcmp(key, "xwayland-scale")) {
+		if (!strcasecmp(value, "off")) {
+			config->xwayland_scale = 0;
+			config->xwayland_scale_auto = false;
+		} else if (!strcasecmp(value, "auto")) {
+			config->xwayland_scale_auto = true;
+		} else {
+			double scale = atof(value);
+			if (scale < 1.0 || scale > 4.0)
+				return false;
+			config->xwayland_scale = scale;
+			config->xwayland_scale_auto = false;
+		}
 	} else if (!strcmp(key, "cursor-theme") || !strcmp(key, "cursor-size")) {
 		if (!strcmp(key, "cursor-theme")) {
 			free(server->cursor_theme);
@@ -197,6 +210,16 @@ bool w3ld_config_get (
 	size_t reply_size
 ) {
 	struct w3ld_config *config = &server->config;
+
+	if (!strcmp(key, "xwayland-scale")) {
+		if (config->xwayland_scale_auto)
+			snprintf(reply, reply_size, "auto");
+		else if (config->xwayland_scale > 0)
+			snprintf(reply, reply_size, "%g", config->xwayland_scale);
+		else
+			snprintf(reply, reply_size, "off");
+		return true;
+	}
 
 	struct {
 		const char *key;

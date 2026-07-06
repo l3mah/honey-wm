@@ -7,6 +7,7 @@
  * order is tiling order). The XDG path lives here; the X11 path in xwayland.c
  * calls the shared lifecycle.
  */
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -48,11 +49,16 @@ void w3ld_window_configure (
 ) {
 	wlr_scene_node_set_position(&window->surface_tree->node, x, y);
 	wlr_scene_rect_set_size(window->dim, width, height);
-	if (window->type == W3LD_WINDOW_X11)
-		wlr_xwayland_surface_configure(window->xwayland_surface, x, y, width,
-				height);
-	else
+	if (window->type == W3LD_WINDOW_X11) {
+		/* X11 lives in a scaled coordinate space (xwayland-scale): the window
+		 * renders at physical pixels and is displayed at logical size. */
+		double scale = w3ld_xwayland_effective_scale(window->server);
+		wlr_xwayland_surface_configure(window->xwayland_surface,
+				(int)round(x * scale), (int)round(y * scale),
+				(int)round(width * scale), (int)round(height * scale));
+	} else {
 		wlr_xdg_toplevel_set_size(window->xdg_toplevel, width, height);
+	}
 }
 
 void w3ld_window_set_activated (

@@ -20,6 +20,7 @@
 #include <linux/input-event-codes.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
+#include <wlr/xwayland/xwayland.h>
 
 #include "w3ld.h"
 
@@ -354,6 +355,13 @@ static void pointer_focus (
 	}
 
 	if (surface) {
+		/* X11 surfaces live in the scaled xwayland coordinate space; the
+		 * scene reports logical coords, Xwayland expects its own. */
+		if (wlr_xwayland_surface_try_from_wlr_surface(surface)) {
+			double scale = w3ld_xwayland_effective_scale(server);
+			sx *= scale;
+			sy *= scale;
+		}
 		wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
 		wlr_seat_pointer_notify_motion(server->seat, time_msec, sx, sy);
 	} else {
