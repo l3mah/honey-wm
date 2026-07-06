@@ -10,6 +10,7 @@
 #include <time.h>
 
 #include <wlr/types/wlr_ext_workspace_v1.h>
+#include <wlr/render/color.h>
 #include <wlr/types/wlr_tearing_control_v1.h>
 
 #include "w3ld.h"
@@ -41,20 +42,25 @@ static void output_frame (
 	struct wlr_scene_output *scene_output =
 		wlr_scene_get_scene_output(output->server->scene, output->wlr_output);
 
-	struct wlr_scene_output_state_options options = {
-		.color_transform = output->server->gamma_transform,
-	};
 	struct wlr_output_state state;
 	wlr_output_state_init(&state);
-	if (wlr_scene_output_build_state(scene_output, &state, &options)) {
-		if (tearing_wanted(output)) {
+	if (wlr_scene_output_build_state(scene_output, &state, NULL)) {
+		/* The night-light LUT rides the output state: the DRM backend
+		 * offloads a 3x1d transform to the CRTC gamma hardware, so it works
+		 * on any renderer (GLES2 has no shader transform support). Backends
+		 * without gamma hardware reject it; retry bare. */
+		if (output->server->gamma_transform)
+			wlr_output_state_set_color_transform(&state,
+					output->server->gamma_transform);
+		if (tearing_wanted(output))
 			state.tearing_page_flip = true;
+
+		if (!wlr_output_commit_state(output->wlr_output, &state)) {
+			state.tearing_page_flip = false;
 			if (!wlr_output_commit_state(output->wlr_output, &state)) {
-				state.tearing_page_flip = false;
+				wlr_output_state_set_color_transform(&state, NULL);
 				wlr_output_commit_state(output->wlr_output, &state);
 			}
-		} else {
-			wlr_output_commit_state(output->wlr_output, &state);
 		}
 	}
 	wlr_output_state_finish(&state);

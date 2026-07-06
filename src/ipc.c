@@ -187,8 +187,10 @@ static void dispatch (
 	}
 
 	/* Any other line is treated as an action verb (spawn, workspace, ...). */
-	w3ld_action_run(server, line);
-	snprintf(reply, reply_size, "ok");
+	if (w3ld_action_run(server, line))
+		snprintf(reply, reply_size, "ok");
+	else
+		snprintf(reply, reply_size, "error: unknown command '%s'", line);
 }
 
 /* -------------------------------------------------------------------- client */

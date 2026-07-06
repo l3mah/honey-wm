@@ -380,7 +380,7 @@ bool w3ld_binding_run (
 	uint32_t modifiers,
 	xkb_keysym_t sym
 );
-void w3ld_action_run (
+bool w3ld_action_run (
 	struct w3ld_server *server,
 	const char *action
 );

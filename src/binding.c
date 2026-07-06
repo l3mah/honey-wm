@@ -137,7 +137,7 @@ static enum w3ld_direction parse_direction (const char *arg) {
 	return W3LD_DIR_LEFT;
 }
 
-void w3ld_action_run (
+bool w3ld_action_run (
 	struct w3ld_server *server,
 	const char *action
 ) {
@@ -186,7 +186,9 @@ void w3ld_action_run (
 		w3ld_action_move_to_output(server, parse_direction(arg));
 	} else {
 		LOG("unknown action: %s", verb);
+		return false;
 	}
+	return true;
 }
 
 /* -------------------------------------------------------------------- setup */
