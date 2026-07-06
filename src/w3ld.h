@@ -71,6 +71,7 @@ struct w3ld_config {
 	bool focus_new;
 	bool mouse_focus_new;
 	bool exit_fullscreen_on_new;
+	bool allow_tearing;
 };
 
 /* ------------------------------------------------------------------- server */
@@ -138,6 +139,12 @@ struct w3ld_server {
 	struct wl_listener request_set_selection;
 
 	/* extra protocol handlers */
+	struct wlr_tearing_control_manager_v1 *tearing_control;
+	struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
+	struct wlr_pointer_constraints_v1 *pointer_constraints;
+	struct wlr_pointer_constraint_v1 *active_constraint;
+	struct wl_listener new_constraint;
+	struct wl_listener constraint_destroy;
 	struct wlr_idle_notifier_v1 *idle_notifier;
 	struct wl_list idle_inhibitors;      /* w3ld_idle_inhibitor.link */
 	struct wl_list shortcuts_inhibitors; /* w3ld_shortcuts_inhibitor.link */
@@ -306,6 +313,10 @@ void w3ld_seat_new_keyboard (
  * shortcuts inhibit) */
 void w3ld_handlers_setup (struct w3ld_server *server);
 bool w3ld_shortcuts_inhibited (struct w3ld_server *server);
+void w3ld_constraint_check (
+	struct w3ld_server *server,
+	struct wlr_surface *surface
+);
 
 void w3ld_arrange (struct w3ld_server *server);
 void w3ld_spawn (const char *command);

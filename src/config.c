@@ -29,6 +29,7 @@ void w3ld_config_defaults (struct w3ld_config *config) {
 	config->focus_new = true;
 	config->mouse_focus_new = false;
 	config->exit_fullscreen_on_new = true;
+	config->allow_tearing = false;
 }
 
 /* ------------------------------------------------------------------ parsers */
@@ -105,6 +106,8 @@ bool w3ld_config_set (
 		config->mouse_focus_new = parse_bool(value);
 	} else if (!strcmp(key, "exit-fullscreen-on-new")) {
 		config->exit_fullscreen_on_new = parse_bool(value);
+	} else if (!strcmp(key, "allow-tearing")) {
+		config->allow_tearing = parse_bool(value);
 	} else if (!strcmp(key, "layout")) {
 		/* master is the only layout so far; spiral/grid arrive in M5. */
 		if (strcmp(value, "master") != 0)

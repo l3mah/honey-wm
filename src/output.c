@@ -10,10 +10,28 @@
 #include <time.h>
 
 #include <wlr/types/wlr_ext_workspace_v1.h>
+#include <wlr/types/wlr_tearing_control_v1.h>
 
 #include "w3ld.h"
 
 /* ------------------------------------------------------------------- listeners */
+
+/* Tear when allowed and the focused window on this output fills it and hints
+ * async presentation (a fullscreen game). */
+static bool tearing_wanted (struct w3ld_output *output) {
+	struct w3ld_server *server = output->server;
+	if (!server->config.allow_tearing || !server->focused)
+		return false;
+	struct w3ld_window *window = server->focused;
+	if (window->workspace->output != output)
+		return false;
+	if (window->geom.width < output->usable.width
+			|| window->geom.height < output->usable.height)
+		return false;
+	return wlr_tearing_control_manager_v1_surface_hint_from_surface(
+			server->tearing_control, window->xdg_toplevel->base->surface)
+		== WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC;
+}
 
 static void output_frame (
 	struct wl_listener *listener,
@@ -26,7 +44,20 @@ static void output_frame (
 	struct wlr_scene_output_state_options options = {
 		.color_transform = output->server->gamma_transform,
 	};
-	wlr_scene_output_commit(scene_output, &options);
+	struct wlr_output_state state;
+	wlr_output_state_init(&state);
+	if (wlr_scene_output_build_state(scene_output, &state, &options)) {
+		if (tearing_wanted(output)) {
+			state.tearing_page_flip = true;
+			if (!wlr_output_commit_state(output->wlr_output, &state)) {
+				state.tearing_page_flip = false;
+				wlr_output_commit_state(output->wlr_output, &state);
+			}
+		} else {
+			wlr_output_commit_state(output->wlr_output, &state);
+		}
+	}
+	wlr_output_state_finish(&state);
 
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);

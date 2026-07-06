@@ -14,6 +14,8 @@
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
+#include <wlr/types/wlr_relative_pointer_v1.h>
 
 #include "w3ld.h"
 
@@ -198,6 +200,7 @@ static void pointer_focus (
 				"default");
 		wlr_seat_pointer_notify_clear_focus(server->seat);
 	}
+	w3ld_constraint_check(server, surface);
 }
 
 static void cursor_motion (
@@ -206,6 +209,17 @@ static void cursor_motion (
 ) {
 	struct w3ld_server *server = wl_container_of(listener, server, cursor_motion);
 	struct wlr_pointer_motion_event *event = data;
+
+	wlr_relative_pointer_manager_v1_send_relative_motion(
+			server->relative_pointer_manager, server->seat,
+			(uint64_t)event->time_msec * 1000, event->delta_x, event->delta_y,
+			event->unaccel_dx, event->unaccel_dy);
+
+	/* A locked constraint pins the cursor: relative motion only. */
+	if (server->active_constraint
+			&& server->active_constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED)
+		return;
+
 	wlr_cursor_move(server->cursor, &event->pointer->base,
 			event->delta_x, event->delta_y);
 	pointer_focus(server, event->time_msec);

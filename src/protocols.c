@@ -12,10 +12,11 @@
 #include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_ext_image_capture_source_v1.h>
+#include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #include <wlr/types/wlr_linux_dmabuf_v1.h>
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
-#include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_security_context_v1.h>
 #include <wlr/types/wlr_single_pixel_buffer_v1.h>
@@ -42,9 +43,11 @@ void w3ld_protocols_setup (struct w3ld_server *server) {
 	wlr_alpha_modifier_v1_create(display);
 	wlr_content_type_manager_v1_create(display, 1);
 
-	/* input, capture, security */
-	wlr_relative_pointer_manager_v1_create(display);
+	/* capture, security (relative-pointer lives in handlers.c, stored for
+	 * sending relative motion) */
 	wlr_screencopy_manager_v1_create(display);
 	wlr_export_dmabuf_manager_v1_create(display);
+	wlr_ext_output_image_capture_source_manager_v1_create(display, 1);
+	wlr_ext_image_copy_capture_manager_v1_create(display, 1);
 	wlr_security_context_manager_v1_create(display);
 }

@@ -13,6 +13,9 @@
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
 #include <wlr/types/wlr_keyboard_shortcuts_inhibit_v1.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
+#include <wlr/types/wlr_relative_pointer_v1.h>
+#include <wlr/types/wlr_tearing_control_v1.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
@@ -113,6 +116,57 @@ static void handle_new_idle_inhibitor (
 	update_idle_inhibit(server);
 }
 
+/* --------------------------------------------------------- pointer constraints */
+
+static void constraint_destroy (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_server *server =
+		wl_container_of(listener, server, constraint_destroy);
+	wl_list_remove(&server->constraint_destroy.link);
+	wl_list_init(&server->constraint_destroy.link);
+	server->active_constraint = NULL;
+}
+
+/* Activate the constraint matching the pointer-focused surface (if any),
+ * deactivating the previous one. */
+void w3ld_constraint_check (
+	struct w3ld_server *server,
+	struct wlr_surface *surface
+) {
+	struct wlr_pointer_constraint_v1 *constraint = surface
+		? wlr_pointer_constraints_v1_constraint_for_surface(
+				server->pointer_constraints, surface, server->seat)
+		: NULL;
+	if (constraint == server->active_constraint)
+		return;
+
+	if (server->active_constraint) {
+		wlr_pointer_constraint_v1_send_deactivated(server->active_constraint);
+		wl_list_remove(&server->constraint_destroy.link);
+		wl_list_init(&server->constraint_destroy.link);
+	}
+	server->active_constraint = constraint;
+	if (constraint) {
+		wlr_pointer_constraint_v1_send_activated(constraint);
+		server->constraint_destroy.notify = constraint_destroy;
+		wl_signal_add(&constraint->events.destroy,
+				&server->constraint_destroy);
+	}
+}
+
+static void handle_new_constraint (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_server *server =
+		wl_container_of(listener, server, new_constraint);
+	struct wlr_pointer_constraint_v1 *constraint = data;
+	if (server->seat->pointer_state.focused_surface == constraint->surface)
+		w3ld_constraint_check(server, constraint->surface);
+}
+
 /* ------------------------------------------------- keyboard-shortcuts-inhibit */
 
 bool w3ld_shortcuts_inhibited (struct w3ld_server *server) {
@@ -160,6 +214,17 @@ static void handle_new_shortcuts_inhibitor (
 void w3ld_handlers_setup (struct w3ld_server *server) {
 	wl_list_init(&server->idle_inhibitors);
 	wl_list_init(&server->shortcuts_inhibitors);
+	wl_list_init(&server->constraint_destroy.link);
+
+	server->tearing_control =
+		wlr_tearing_control_manager_v1_create(server->display, 1);
+	server->relative_pointer_manager =
+		wlr_relative_pointer_manager_v1_create(server->display);
+	server->pointer_constraints =
+		wlr_pointer_constraints_v1_create(server->display);
+	server->new_constraint.notify = handle_new_constraint;
+	wl_signal_add(&server->pointer_constraints->events.new_constraint,
+			&server->new_constraint);
 
 	struct wlr_cursor_shape_manager_v1 *cursor_shape =
 		wlr_cursor_shape_manager_v1_create(server->display, 1);
