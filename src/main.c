@@ -56,6 +56,9 @@ int main (
 
 	struct w3ld_server server = {0};
 	w3ld_config_defaults(&server.config);
+	/* Ready before any arrange (which broadcasts) runs during backend start. */
+	wl_list_init(&server.ipc_clients);
+	server.ipc_fd = -1;
 
 	server.display = wl_display_create();
 	server.event_loop = wl_display_get_event_loop(server.display);

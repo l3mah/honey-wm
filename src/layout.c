@@ -180,4 +180,6 @@ void w3ld_arrange (struct w3ld_server *server) {
 		wlr_scene_node_set_enabled(&window->tree->node, visible);
 		wlr_scene_node_set_enabled(&window->surface_tree->node, visible);
 	}
+
+	w3ld_status_broadcast(server);
 }

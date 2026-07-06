@@ -55,8 +55,11 @@ static void output_destroy (
 	struct w3ld_workspace *workspace, *tmp;
 	wl_list_for_each_safe(workspace, tmp, &output->workspaces, link) {
 		wl_list_remove(&workspace->link);
+		free(workspace->name);
 		free(workspace);
 	}
+	free(output->status_workspaces);
+	free(output->status_window);
 
 	wl_list_remove(&output->frame.link);
 	wl_list_remove(&output->destroy.link);

@@ -61,6 +61,18 @@ int main (
 		return 2;
 	}
 
+	/* subscribe streams until the compositor closes the connection. */
+	if (!strcmp(argv[1], "subscribe")) {
+		char stream[4096];
+		ssize_t got;
+		while ((got = read(fd, stream, sizeof stream)) > 0) {
+			if (write(STDOUT_FILENO, stream, got) < 0)
+				break;
+		}
+		close(fd);
+		return 0;
+	}
+
 	char reply[1024];
 	ssize_t count = read(fd, reply, sizeof reply - 1);
 	close(fd);

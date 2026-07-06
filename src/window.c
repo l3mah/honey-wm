@@ -63,6 +63,7 @@ void w3ld_focus_window (struct w3ld_window *window) {
 	}
 
 	server->focused = window;
+	w3ld_status_broadcast(server);
 }
 
 /* Focus the first window on an output's active workspace, or clear focus. */
@@ -82,6 +83,7 @@ void w3ld_focus_output_active (struct w3ld_output *output) {
 		server->focused = NULL;
 	}
 	wlr_seat_keyboard_notify_clear_focus(server->seat);
+	w3ld_status_broadcast(server);
 }
 
 /* ----------------------------------------------------------------- listeners */
@@ -139,6 +141,22 @@ static void window_commit (
 		wlr_xdg_toplevel_set_size(window->xdg_toplevel, 0, 0);
 }
 
+static void window_status_changed (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window = wl_container_of(listener, window, set_title);
+	w3ld_status_broadcast(window->server);
+}
+
+static void window_app_id_changed (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_window *window = wl_container_of(listener, window, set_app_id);
+	w3ld_status_broadcast(window->server);
+}
+
 static void window_destroy (
 	struct wl_listener *listener,
 	void *data
@@ -148,6 +166,8 @@ static void window_destroy (
 	wl_list_remove(&window->unmap.link);
 	wl_list_remove(&window->commit.link);
 	wl_list_remove(&window->destroy.link);
+	wl_list_remove(&window->set_title.link);
+	wl_list_remove(&window->set_app_id.link);
 	wlr_scene_node_destroy(&window->tree->node); /* borders; surface self-frees */
 	free(window);
 }
@@ -185,6 +205,10 @@ static void new_xdg_toplevel (
 	wl_signal_add(&toplevel->base->surface->events.commit, &window->commit);
 	window->destroy.notify = window_destroy;
 	wl_signal_add(&toplevel->events.destroy, &window->destroy);
+	window->set_title.notify = window_status_changed;
+	wl_signal_add(&toplevel->events.set_title, &window->set_title);
+	window->set_app_id.notify = window_app_id_changed;
+	wl_signal_add(&toplevel->events.set_app_id, &window->set_app_id);
 }
 
 /* -------------------------------------------------------------------- setup */

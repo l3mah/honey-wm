@@ -125,6 +125,27 @@ static void dispatch (
 		return;
 	}
 
+	if (!strncmp(line, "workspace-name ", 15)) {
+		char *rest = line + 15;
+		while (*rest == ' ')
+			rest++;
+		int number = atoi(rest);
+		if (number < 1 || !server->focused_output) {
+			snprintf(reply, reply_size,
+					"error: usage: workspace-name <N> [name]");
+			return;
+		}
+		char *space = strchr(rest, ' ');
+		char *name = space ? space + 1 : NULL;
+		struct w3ld_workspace *workspace =
+			w3ld_workspace_get(server->focused_output, number);
+		free(workspace->name);
+		workspace->name = (name && *name) ? strdup(name) : NULL;
+		w3ld_status_broadcast(server);
+		snprintf(reply, reply_size, "ok");
+		return;
+	}
+
 	if (!strcmp(line, "ping")) {
 		snprintf(reply, reply_size, "pong");
 		return;
@@ -166,6 +187,13 @@ static int handle_client (
 	if (newline)
 		*newline = '\0';
 
+	/* `subscribe` holds the connection open as a status-stream client. */
+	if (!strcmp(buffer, "subscribe")) {
+		client->subscriber = true;
+		w3ld_status_snapshot(client->server, client);
+		return 0;
+	}
+
 	char reply[512];
 	dispatch(client->server, buffer, reply, sizeof reply);
 	send(fd, reply, strlen(reply), MSG_NOSIGNAL);
@@ -195,9 +223,7 @@ static int handle_listen (
 /* -------------------------------------------------------------------- setup */
 
 void w3ld_ipc_setup (struct w3ld_server *server) {
-	wl_list_init(&server->ipc_clients);
-	server->ipc_fd = -1;
-
+	/* ipc_clients + ipc_fd are initialized in main() before backend start. */
 	const char *runtime = getenv("XDG_RUNTIME_DIR");
 	const char *display = getenv("WAYLAND_DISPLAY");
 	if (!runtime || !display) {

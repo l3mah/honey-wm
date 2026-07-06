@@ -148,6 +148,9 @@ struct w3ld_output {
 
 	struct wl_list layer_surfaces; /* w3ld_layer_surface.link */
 
+	char *status_workspaces; /* last broadcast line, for diffing */
+	char *status_window;
+
 	struct wl_listener frame;
 	struct wl_listener destroy;
 };
@@ -158,6 +161,7 @@ struct w3ld_workspace {
 	struct wl_list link; /* w3ld_output.workspaces */
 	struct w3ld_output *output;
 	int number;
+	char *name; /* optional label, or NULL */
 };
 
 /* ------------------------------------------------------------------- window */
@@ -177,6 +181,8 @@ struct w3ld_window {
 	struct wl_listener unmap;
 	struct wl_listener commit;
 	struct wl_listener destroy;
+	struct wl_listener set_title;
+	struct wl_listener set_app_id;
 };
 
 /* ------------------------------------------------------------------ keybind */
@@ -193,6 +199,7 @@ struct w3ld_ipc_client {
 	struct w3ld_server *server;
 	int fd;
 	struct wl_event_source *source;
+	bool subscriber; /* receives the status stream instead of one reply */
 };
 
 /* -------------------------------------------------------------- layer surface */
@@ -338,6 +345,13 @@ void w3ld_action_move_to_output (
 /* layer shell */
 void w3ld_layer_setup (struct w3ld_server *server);
 void w3ld_layer_arrange (struct w3ld_output *output);
+
+/* status stream */
+void w3ld_status_broadcast (struct w3ld_server *server);
+void w3ld_status_snapshot (
+	struct w3ld_server *server,
+	struct w3ld_ipc_client *client
+);
 
 /* input */
 void w3ld_input_setup (struct w3ld_server *server);
