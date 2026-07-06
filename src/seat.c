@@ -60,7 +60,8 @@ static void keyboard_key (
 	uint32_t modifiers = wlr_keyboard_get_modifiers(wlr_keyboard);
 
 	bool handled = false;
-	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED
+			&& !w3ld_shortcuts_inhibited(server)) {
 		/* Match at level 0 so shifted binds resolve to the base symbol
 		 * (Super+Shift+1 -> 1, not exclam). */
 		xkb_layout_index_t layout =
@@ -104,7 +105,7 @@ static void keyboard_destroy (
 	free(keyboard);
 }
 
-static void new_keyboard (
+void w3ld_seat_new_keyboard (
 	struct w3ld_server *server,
 	struct wlr_input_device *device
 ) {
@@ -262,7 +263,7 @@ static void new_input (
 
 	switch (device->type) {
 	case WLR_INPUT_DEVICE_KEYBOARD:
-		new_keyboard(server, device);
+		w3ld_seat_new_keyboard(server, device);
 		break;
 	case WLR_INPUT_DEVICE_POINTER:
 		wlr_cursor_attach_input_device(server->cursor, device);

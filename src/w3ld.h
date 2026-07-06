@@ -133,6 +133,29 @@ struct w3ld_server {
 	struct wl_listener cursor_frame;
 	struct wl_listener request_cursor;
 	struct wl_listener request_set_selection;
+
+	/* extra protocol handlers */
+	struct wlr_idle_notifier_v1 *idle_notifier;
+	struct wl_list idle_inhibitors;      /* w3ld_idle_inhibitor.link */
+	struct wl_list shortcuts_inhibitors; /* w3ld_shortcuts_inhibitor.link */
+	struct wl_listener request_cursor_shape;
+	struct wl_listener new_virtual_keyboard;
+	struct wl_listener new_virtual_pointer;
+	struct wl_listener request_activate;
+	struct wl_listener new_idle_inhibitor;
+	struct wl_listener new_shortcuts_inhibitor;
+};
+
+struct w3ld_idle_inhibitor {
+	struct wl_list link; /* w3ld_server.idle_inhibitors */
+	struct w3ld_server *server;
+	struct wl_listener destroy;
+};
+
+struct w3ld_shortcuts_inhibitor {
+	struct wl_list link; /* w3ld_server.shortcuts_inhibitors */
+	struct wlr_keyboard_shortcuts_inhibitor_v1 *inhibitor;
+	struct wl_listener destroy;
 };
 
 /* ------------------------------------------------------------------- output */
@@ -259,6 +282,15 @@ void w3ld_output_setup (struct w3ld_server *server);
 void w3ld_output_manager_setup (struct w3ld_server *server);
 void w3ld_window_setup (struct w3ld_server *server);
 void w3ld_seat_setup (struct w3ld_server *server);
+void w3ld_seat_new_keyboard (
+	struct w3ld_server *server,
+	struct wlr_input_device *device
+);
+
+/* extra protocol handlers (cursor-shape, virtual input, activation, idle/
+ * shortcuts inhibit) */
+void w3ld_handlers_setup (struct w3ld_server *server);
+bool w3ld_shortcuts_inhibited (struct w3ld_server *server);
 
 void w3ld_arrange (struct w3ld_server *server);
 void w3ld_spawn (const char *command);
