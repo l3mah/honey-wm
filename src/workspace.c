@@ -79,6 +79,39 @@ struct w3ld_output *w3ld_output_in_direction (
 	return best;
 }
 
+/* Parse a workspace address: "output:N" (connector name) or a bare "N" on the
+ * focused output. Creates the workspace on demand. */
+bool w3ld_parse_ws_addr (
+	struct w3ld_server *server,
+	const char *addr,
+	struct w3ld_workspace **out
+) {
+	struct w3ld_output *output = server->focused_output;
+	const char *number_part = addr;
+
+	const char *colon = strchr(addr, ':');
+	if (colon) {
+		char name[64];
+		size_t length = colon - addr;
+		if (length == 0 || length >= sizeof name)
+			return false;
+		memcpy(name, addr, length);
+		name[length] = '\0';
+		output = w3ld_output_by_name(server, name);
+		number_part = colon + 1;
+	}
+	if (!output)
+		return false;
+
+	char *end;
+	long number = strtol(number_part, &end, 10);
+	if (end == number_part || *end != '\0' || number < 1)
+		return false;
+
+	*out = w3ld_workspace_get(output, (int)number);
+	return true;
+}
+
 /* The output with this connector name (e.g. "DP-1"), or NULL. */
 struct w3ld_output *w3ld_output_by_name (
 	struct w3ld_server *server,

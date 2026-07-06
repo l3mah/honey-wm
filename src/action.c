@@ -194,13 +194,20 @@ void w3ld_action_swap_master (struct w3ld_server *server) {
 
 /* ---------------------------------------------------------- live layout tweaks */
 
+/* Live tweaks write the ACTIVE workspace's override (each workspace remembers
+ * its own values); `set master-*` remains the global default. */
+
 void w3ld_action_mfact (
 	struct w3ld_server *server,
 	double delta
 ) {
-	double value = server->config.master_mfact + delta;
-	server->config.master_mfact = value < 0.05 ? 0.05
-		: value > 0.95 ? 0.95 : value;
+	if (!server->focused_output)
+		return;
+	struct w3ld_workspace *workspace = server->focused_output->active;
+	double value = (workspace->has_mfact ? workspace->mfact
+			: server->config.master_mfact) + delta;
+	workspace->mfact = value < 0.05 ? 0.05 : value > 0.95 ? 0.95 : value;
+	workspace->has_mfact = true;
 	w3ld_arrange(server);
 }
 
@@ -208,14 +215,24 @@ void w3ld_action_nmaster (
 	struct w3ld_server *server,
 	int delta
 ) {
-	int value = server->config.master_nmaster + delta;
-	server->config.master_nmaster = value < 1 ? 1 : value;
+	if (!server->focused_output)
+		return;
+	struct w3ld_workspace *workspace = server->focused_output->active;
+	int value = (workspace->has_nmaster ? workspace->nmaster
+			: server->config.master_nmaster) + delta;
+	workspace->nmaster = value < 1 ? 1 : value;
+	workspace->has_nmaster = true;
 	w3ld_arrange(server);
 }
 
 void w3ld_action_orientation_cycle (struct w3ld_server *server) {
-	server->config.master_orientation =
-		(server->config.master_orientation + 1) % 4;
+	if (!server->focused_output)
+		return;
+	struct w3ld_workspace *workspace = server->focused_output->active;
+	enum w3ld_orientation current = workspace->has_orientation
+		? workspace->orientation : server->config.master_orientation;
+	workspace->orientation = (current + 1) % 4;
+	workspace->has_orientation = true;
 	w3ld_arrange(server);
 }
 

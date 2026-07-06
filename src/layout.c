@@ -1,12 +1,20 @@
 /* Tiling layouts.
  *
- * A stateless master-stack layout over each output's active workspace, driven by
- * the config (master-mfact/nmaster/orientation, gaps, smart-gaps, border-size). A
- * layout is a pure function of the window-list order and the config. Each window
- * is a border tree framing an inset surface. Windows on inactive workspaces are
- * hidden.
+ * Stateless layouts behind a name-keyed registry: each arrange() is a pure
+ * function of the tiled-window array and its parameters (a layout can always be
+ * recomputed from the window-list order — no per-layout state). The driver
+ * collects each output's tiled windows, resolves effective parameters
+ * (workspace override or global), and delegates. Non-tiled windows (floating /
+ * fullscreen / maximized / fake-fullscreen) are placed by their state. Windows
+ * on inactive workspaces are hidden.
  */
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include "w3ld.h"
+
+#define MAX_TILED 64
 
 /* ------------------------------------------------------------------- helpers */
 
@@ -21,10 +29,11 @@ static void set_border_rects (
 	wlr_scene_node_set_position(&window->border[0]->node, 0, 0);
 	wlr_scene_rect_set_size(window->border[1], width, border);        /* bottom */
 	wlr_scene_node_set_position(&window->border[1]->node, 0, height - border);
-	wlr_scene_rect_set_size(window->border[2], border, height - 2 * border); /* left */
-	wlr_scene_node_set_position(&window->border[2]->node, 0, border);
-	wlr_scene_rect_set_size(window->border[3], border, height - 2 * border); /* right */
-	wlr_scene_node_set_position(&window->border[3]->node, width - border, border);
+	wlr_scene_rect_set_size(window->border[2], border, height - 2 * border);
+	wlr_scene_node_set_position(&window->border[2]->node, 0, border); /* left */
+	wlr_scene_rect_set_size(window->border[3], border, height - 2 * border);
+	wlr_scene_node_set_position(&window->border[3]->node, width - border,
+			border);                                                  /* right */
 }
 
 static void place_window (
@@ -45,22 +54,163 @@ static void place_window (
 			x, y, width, height, border);
 }
 
+static void place_box (
+	struct w3ld_layout_ctx *ctx,
+	struct w3ld_window *window,
+	struct wlr_box box
+) {
+	place_window(window, box.x, box.y, box.width, box.height, ctx->border);
+}
+
+/* Split `count` windows along one axis of `box` with `gap` between them; the
+ * last window absorbs integer-division remainder. */
+static void arrange_line (
+	struct w3ld_layout_ctx *ctx,
+	struct w3ld_window **windows,
+	int count,
+	struct wlr_box box,
+	bool vertical
+) {
+	for (int i = 0; i < count; i++) {
+		struct wlr_box cell = box;
+		if (vertical) {
+			int each = (box.height - ctx->gap * (count - 1)) / count;
+			cell.y = box.y + i * (each + ctx->gap);
+			cell.height = i == count - 1
+				? box.y + box.height - cell.y : each;
+		} else {
+			int each = (box.width - ctx->gap * (count - 1)) / count;
+			cell.x = box.x + i * (each + ctx->gap);
+			cell.width = i == count - 1
+				? box.x + box.width - cell.x : each;
+		}
+		place_box(ctx, windows[i], cell);
+	}
+}
+
+/* ------------------------------------------------------------------- layouts */
+
+static void master_arrange (struct w3ld_layout_ctx *ctx) {
+	int masters = ctx->nmaster < 1 ? 1 : ctx->nmaster;
+	if (masters > ctx->count)
+		masters = ctx->count;
+	int stacked = ctx->count - masters;
+
+	bool split_horizontal = ctx->orientation == W3LD_ORIENT_LEFT
+		|| ctx->orientation == W3LD_ORIENT_RIGHT;
+	bool master_first = ctx->orientation == W3LD_ORIENT_LEFT
+		|| ctx->orientation == W3LD_ORIENT_TOP;
+
+	struct wlr_box master_box = ctx->area;
+	struct wlr_box stack_box = ctx->area;
+	if (stacked > 0) {
+		if (split_horizontal) {
+			int available = ctx->area.width - ctx->gap;
+			int master_width = (int)(available * ctx->mfact);
+			if (master_first) {
+				master_box.width = master_width;
+				stack_box.x = ctx->area.x + master_width + ctx->gap;
+				stack_box.width = available - master_width;
+			} else {
+				stack_box.width = available - master_width;
+				master_box.x = ctx->area.x + stack_box.width + ctx->gap;
+				master_box.width = master_width;
+			}
+		} else {
+			int available = ctx->area.height - ctx->gap;
+			int master_height = (int)(available * ctx->mfact);
+			if (master_first) {
+				master_box.height = master_height;
+				stack_box.y = ctx->area.y + master_height + ctx->gap;
+				stack_box.height = available - master_height;
+			} else {
+				stack_box.height = available - master_height;
+				master_box.y = ctx->area.y + stack_box.height + ctx->gap;
+				master_box.height = master_height;
+			}
+		}
+	}
+
+	arrange_line(ctx, ctx->windows, masters, master_box, split_horizontal);
+	if (stacked > 0)
+		arrange_line(ctx, ctx->windows + masters, stacked, stack_box,
+				split_horizontal);
+}
+
+/* Fibonacci spiral: each window takes `spiral_ratio` of the remaining box, the
+ * rest recurses with the split axis alternating. */
+static void spiral_arrange (struct w3ld_layout_ctx *ctx) {
+	struct wlr_box remaining = ctx->area;
+	bool horizontal = ctx->spiral_horizontal;
+
+	for (int i = 0; i < ctx->count; i++) {
+		if (i == ctx->count - 1) {
+			place_box(ctx, ctx->windows[i], remaining);
+			break;
+		}
+		struct wlr_box cell = remaining;
+		if (horizontal) {
+			int take = (int)((remaining.width - ctx->gap) * ctx->spiral_ratio);
+			cell.width = take;
+			remaining.x += take + ctx->gap;
+			remaining.width -= take + ctx->gap;
+		} else {
+			int take = (int)((remaining.height - ctx->gap) * ctx->spiral_ratio);
+			cell.height = take;
+			remaining.y += take + ctx->gap;
+			remaining.height -= take + ctx->gap;
+		}
+		place_box(ctx, ctx->windows[i], cell);
+		horizontal = !horizontal;
+	}
+}
+
+/* Even rows x columns; a partial last row stretches to fill the width. */
+static void grid_arrange (struct w3ld_layout_ctx *ctx) {
+	int columns = ctx->grid_columns > 0 ? ctx->grid_columns
+		: (int)ceil(sqrt(ctx->count));
+	if (columns > ctx->count)
+		columns = ctx->count;
+	int rows = (ctx->count + columns - 1) / columns;
+
+	int placed = 0;
+	for (int row = 0; row < rows; row++) {
+		int in_row = ctx->count - placed < columns
+			? ctx->count - placed : columns;
+		int each_height = (ctx->area.height - ctx->gap * (rows - 1)) / rows;
+		struct wlr_box row_box = ctx->area;
+		row_box.y = ctx->area.y + row * (each_height + ctx->gap);
+		row_box.height = row == rows - 1
+			? ctx->area.y + ctx->area.height - row_box.y : each_height;
+		arrange_line(ctx, ctx->windows + placed, in_row, row_box, false);
+		placed += in_row;
+	}
+}
+
+/* ------------------------------------------------------------------ registry */
+
+static const struct w3ld_layout layouts[] = {
+	{ "master", master_arrange },
+	{ "spiral", spiral_arrange },
+	{ "grid", grid_arrange },
+};
+
+const struct w3ld_layout *w3ld_layout_by_name (const char *name) {
+	for (size_t i = 0; i < sizeof layouts / sizeof layouts[0]; i++) {
+		if (!strcmp(layouts[i].name, name))
+			return &layouts[i];
+	}
+	return NULL;
+}
+
+/* -------------------------------------------------------------------- driver */
+
 static bool tiled_on (
 	struct w3ld_window *window,
 	struct w3ld_workspace *workspace
 ) {
 	return window->mapped && window->workspace == workspace
 		&& w3ld_window_is_tiled(window);
-}
-
-static int count_tiled (struct w3ld_workspace *workspace) {
-	int count = 0;
-	struct w3ld_window *window;
-	wl_list_for_each(window, &workspace->output->server->windows, link) {
-		if (tiled_on(window, workspace))
-			count++;
-	}
-	return count;
 }
 
 /* Place a visible non-tiled window according to its state. */
@@ -86,123 +236,54 @@ static void place_untiled (
 	}
 }
 
-/* Place windows [start, start+count) of the active workspace into `box`, stacked
- * along one axis with `gap` between them; the last window fills the remainder to
- * absorb integer rounding. */
-static void place_region (
-	struct w3ld_output *output,
-	int start,
-	int count,
-	struct wlr_box box,
-	bool vertical,
-	int gap,
-	int border
-) {
-	int index = 0;
-	int placed = 0;
-	struct w3ld_window *window;
-	wl_list_for_each(window, &output->server->windows, link) {
-		if (!tiled_on(window, output->active))
-			continue;
-		if (index >= start && index < start + count) {
-			int x, y, width, height;
-			if (vertical) {
-				int each = (box.height - gap * (count - 1)) / count;
-				x = box.x;
-				width = box.width;
-				y = box.y + placed * (each + gap);
-				height = placed == count - 1 ? box.y + box.height - y : each;
-			} else {
-				int each = (box.width - gap * (count - 1)) / count;
-				y = box.y;
-				height = box.height;
-				x = box.x + placed * (each + gap);
-				width = placed == count - 1 ? box.x + box.width - x : each;
-			}
-			place_window(window, x, y, width, height, border);
-			placed++;
-		}
-		index++;
-	}
-}
-
-/* --------------------------------------------------------------- master-stack */
-
 static void arrange_output (struct w3ld_output *output) {
 	if (!output->active)
 		return;
-	struct w3ld_config *config = &output->server->config;
+	struct w3ld_server *server = output->server;
+	struct w3ld_config *config = &server->config;
+	struct w3ld_workspace *workspace = output->active;
 
-	struct w3ld_window *state_window;
-	wl_list_for_each(state_window, &output->server->windows, link) {
-		if (state_window->mapped
-				&& state_window->workspace == output->active
-				&& !w3ld_window_is_tiled(state_window))
-			place_untiled(state_window, output);
+	struct w3ld_window *tiled[MAX_TILED];
+	int count = 0;
+	struct w3ld_window *window;
+	wl_list_for_each(window, &server->windows, link) {
+		if (window->mapped && window->workspace == workspace
+				&& !w3ld_window_is_tiled(window))
+			place_untiled(window, output);
+		else if (tiled_on(window, workspace) && count < MAX_TILED)
+			tiled[count++] = window;
 	}
-
-	int window_count = count_tiled(output->active);
-	if (window_count == 0)
+	if (count == 0)
 		return;
 
-	bool smart = config->smart_gaps && window_count == 1;
+	bool smart = config->smart_gaps && count == 1;
 	int gap_out = smart ? 0 : config->gaps_out;
-	int gap_in = smart ? 0 : config->gaps_in;
-	int border = smart ? 0 : config->border_size;
 
-	struct wlr_box area = output->usable;
-	area.x += gap_out;
-	area.y += gap_out;
-	area.width -= 2 * gap_out;
-	area.height -= 2 * gap_out;
+	struct w3ld_layout_ctx ctx = {
+		.windows = tiled,
+		.count = count,
+		.area = {
+			.x = output->usable.x + gap_out,
+			.y = output->usable.y + gap_out,
+			.width = output->usable.width - 2 * gap_out,
+			.height = output->usable.height - 2 * gap_out,
+		},
+		.gap = smart ? 0 : config->gaps_in,
+		.border = smart ? 0 : config->border_size,
+		.mfact = workspace->has_mfact ? workspace->mfact
+			: config->master_mfact,
+		.nmaster = workspace->has_nmaster ? workspace->nmaster
+			: config->master_nmaster,
+		.orientation = workspace->has_orientation ? workspace->orientation
+			: config->master_orientation,
+		.spiral_ratio = config->spiral_ratio,
+		.spiral_horizontal = config->spiral_horizontal,
+		.grid_columns = config->grid_columns,
+	};
 
-	int masters = config->master_nmaster < 1 ? 1 : config->master_nmaster;
-	if (masters > window_count)
-		masters = window_count;
-	int stacked = window_count - masters;
-
-	bool split_horizontal = config->master_orientation == W3LD_ORIENT_LEFT
-		|| config->master_orientation == W3LD_ORIENT_RIGHT;
-	bool master_first = config->master_orientation == W3LD_ORIENT_LEFT
-		|| config->master_orientation == W3LD_ORIENT_TOP;
-
-	struct wlr_box master_box = area;
-	struct wlr_box stack_box = area;
-	if (stacked > 0) {
-		if (split_horizontal) {
-			int available = area.width - gap_in;
-			int master_width = (int)(available * config->master_mfact);
-			int stack_width = available - master_width;
-			if (master_first) {
-				master_box.width = master_width;
-				stack_box.x = area.x + master_width + gap_in;
-				stack_box.width = stack_width;
-			} else {
-				stack_box.width = stack_width;
-				master_box.x = area.x + stack_width + gap_in;
-				master_box.width = master_width;
-			}
-		} else {
-			int available = area.height - gap_in;
-			int master_height = (int)(available * config->master_mfact);
-			int stack_height = available - master_height;
-			if (master_first) {
-				master_box.height = master_height;
-				stack_box.y = area.y + master_height + gap_in;
-				stack_box.height = stack_height;
-			} else {
-				stack_box.height = stack_height;
-				master_box.y = area.y + stack_height + gap_in;
-				master_box.height = master_height;
-			}
-		}
-	}
-
-	place_region(output, 0, masters, master_box, split_horizontal, gap_in,
-			border);
-	if (stacked > 0)
-		place_region(output, masters, stacked, stack_box, split_horizontal,
-				gap_in, border);
+	const struct w3ld_layout *layout =
+		workspace->layout ? workspace->layout : config->layout;
+	layout->arrange(&ctx);
 }
 
 void w3ld_arrange (struct w3ld_server *server) {

@@ -49,13 +49,45 @@ enum w3ld_scene_layer {
 	W3LD_NUM_LAYERS,
 };
 
+/* ------------------------------------------------------------------- layouts */
+
+/* A layout is a pure function of the tiled-window array and its parameters; it
+ * assigns each window's geometry via the placement callback the driver hands
+ * it. Adding a layout = one arrange() plus a registry entry in layout.c. */
+struct w3ld_layout_ctx {
+	struct w3ld_window **windows;
+	int count;
+	struct wlr_box area; /* usable area minus outer gaps */
+	int gap;             /* inner gap between windows */
+	int border;
+	/* master params (effective: workspace override or global) */
+	double mfact;
+	int nmaster;
+	enum w3ld_orientation orientation;
+	/* spiral / grid params */
+	double spiral_ratio;
+	bool spiral_horizontal;
+	int grid_columns; /* 0 = auto */
+};
+
+struct w3ld_layout {
+	const char *name;
+	void (*arrange) (struct w3ld_layout_ctx *ctx);
+};
+
+const struct w3ld_layout *w3ld_layout_by_name (const char *name);
+
 /* ------------------------------------------------------------------- config */
 
 struct w3ld_config {
-	/* master layout */
+	/* layout */
+	const struct w3ld_layout *layout; /* global default */
 	double master_mfact;
 	int master_nmaster;
 	enum w3ld_orientation master_orientation;
+	double spiral_ratio;
+	bool spiral_horizontal;
+	int grid_columns;
 	/* gaps (global) */
 	int gaps_in;
 	int gaps_out;
@@ -208,6 +240,15 @@ struct w3ld_workspace {
 	int number;
 	char *name; /* optional label, or NULL */
 	struct wlr_ext_workspace_handle_v1 *ext; /* ext-workspace handle, or NULL */
+
+	/* per-workspace overrides; has_* false = use the global default */
+	const struct w3ld_layout *layout; /* NULL = global */
+	double mfact;
+	bool has_mfact;
+	int nmaster;
+	bool has_nmaster;
+	enum w3ld_orientation orientation;
+	bool has_orientation;
 };
 
 /* ------------------------------------------------------------------- window */
@@ -403,6 +444,10 @@ bool w3ld_config_set (
 	const char *key,
 	const char *value
 );
+bool w3ld_parse_orientation (
+	const char *value,
+	enum w3ld_orientation *out
+);
 
 /* bindings + IPC */
 void w3ld_binding_setup (struct w3ld_server *server);
@@ -435,6 +480,12 @@ void w3ld_focus_output_active (struct w3ld_output *output);
 struct w3ld_workspace *w3ld_workspace_get (
 	struct w3ld_output *output,
 	int number
+);
+/* Parse "output:N" or bare "N" (focused output). */
+bool w3ld_parse_ws_addr (
+	struct w3ld_server *server,
+	const char *addr,
+	struct w3ld_workspace **out
 );
 struct w3ld_window *w3ld_workspace_first_window (struct w3ld_workspace *workspace);
 struct w3ld_output *w3ld_output_in_direction (

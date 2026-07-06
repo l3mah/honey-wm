@@ -12,9 +12,13 @@
 #include "w3ld.h"
 
 void w3ld_config_defaults (struct w3ld_config *config) {
+	config->layout = w3ld_layout_by_name("master");
 	config->master_mfact = 0.55;
 	config->master_nmaster = 1;
 	config->master_orientation = W3LD_ORIENT_LEFT;
+	config->spiral_ratio = 0.5;
+	config->spiral_horizontal = true;
+	config->grid_columns = 0; /* auto */
 	config->gaps_in = 5;
 	config->gaps_out = 8;
 	config->smart_gaps = true;
@@ -45,7 +49,7 @@ static uint32_t parse_color (const char *value) {
 	return (uint32_t)strtoul(value, NULL, 16);
 }
 
-static bool parse_orientation (
+bool w3ld_parse_orientation (
 	const char *value,
 	enum w3ld_orientation *out
 ) {
@@ -76,7 +80,7 @@ bool w3ld_config_set (
 	} else if (!strcmp(key, "master-nmaster")) {
 		config->master_nmaster = atoi(value);
 	} else if (!strcmp(key, "master-orientation")) {
-		if (!parse_orientation(value, &config->master_orientation))
+		if (!w3ld_parse_orientation(value, &config->master_orientation))
 			return false;
 	} else if (!strcmp(key, "gaps-in")) {
 		config->gaps_in = atoi(value);
@@ -111,9 +115,24 @@ bool w3ld_config_set (
 	} else if (!strcmp(key, "allow-tearing")) {
 		config->allow_tearing = parse_bool(value);
 	} else if (!strcmp(key, "layout")) {
-		/* master is the only layout so far; spiral/grid arrive in M5. */
-		if (strcmp(value, "master") != 0)
+		const struct w3ld_layout *layout = w3ld_layout_by_name(value);
+		if (!layout)
 			return false;
+		config->layout = layout;
+	} else if (!strcmp(key, "spiral-ratio")) {
+		double ratio = atof(value);
+		if (ratio < 0.1 || ratio > 0.9)
+			return false;
+		config->spiral_ratio = ratio;
+	} else if (!strcmp(key, "spiral-first-split")) {
+		if (!strcasecmp(value, "horizontal"))
+			config->spiral_horizontal = true;
+		else if (!strcasecmp(value, "vertical"))
+			config->spiral_horizontal = false;
+		else
+			return false;
+	} else if (!strcmp(key, "grid-columns")) {
+		config->grid_columns = atoi(value);
 	} else {
 		return false;
 	}

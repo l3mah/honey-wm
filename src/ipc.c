@@ -125,6 +125,53 @@ static void dispatch (
 		return;
 	}
 
+	if (!strncmp(line, "set-ws ", 7)) {
+		char *save = NULL;
+		char *addr = strtok_r(line + 7, " \t", &save);
+		char *key = strtok_r(NULL, " \t", &save);
+		char *value = strtok_r(NULL, " \t", &save);
+		if (!addr || !key || !value) {
+			snprintf(reply, reply_size,
+					"error: usage: set-ws <output:N|N> <key> <value>");
+			return;
+		}
+		struct w3ld_workspace *workspace;
+		if (!w3ld_parse_ws_addr(server, addr, &workspace)) {
+			snprintf(reply, reply_size, "error: unknown workspace '%s'", addr);
+			return;
+		}
+		if (!strcmp(key, "layout")) {
+			const struct w3ld_layout *layout = w3ld_layout_by_name(value);
+			if (!layout) {
+				snprintf(reply, reply_size, "error: unknown layout '%s'",
+						value);
+				return;
+			}
+			workspace->layout = layout;
+		} else if (!strcmp(key, "master-mfact")) {
+			workspace->mfact = atof(value);
+			workspace->has_mfact = true;
+		} else if (!strcmp(key, "master-nmaster")) {
+			workspace->nmaster = atoi(value);
+			workspace->has_nmaster = true;
+		} else if (!strcmp(key, "master-orientation")) {
+			if (!w3ld_parse_orientation(value, &workspace->orientation)) {
+				snprintf(reply, reply_size, "error: bad orientation '%s'",
+						value);
+				return;
+			}
+			workspace->has_orientation = true;
+		} else {
+			snprintf(reply, reply_size, "error: '%s' is not overridable"
+					" per-workspace (layout, master-mfact, master-nmaster,"
+					" master-orientation)", key);
+			return;
+		}
+		w3ld_arrange(server);
+		snprintf(reply, reply_size, "ok");
+		return;
+	}
+
 	if (!strncmp(line, "workspace-name ", 15)) {
 		char *rest = line + 15;
 		while (*rest == ' ')
