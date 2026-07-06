@@ -51,7 +51,7 @@ double w3ld_xwayland_effective_scale (struct w3ld_server *server) {
 		? server->config.xwayland_scale : 1.0;
 }
 
-static void buffer_descale (
+static void buffer_scale_x11 (
 	struct wlr_scene_buffer *buffer,
 	int sx,
 	int sy,
@@ -60,24 +60,29 @@ static void buffer_descale (
 	double scale = *(double *)data;
 	if (!buffer->buffer)
 		return;
-	int width = (int)round(buffer->buffer->width / scale);
-	int height = (int)round(buffer->buffer->height / scale);
-	DBG("x11 descale: buffer %dx%d -> dest %dx%d (scale %.2f)",
-			buffer->buffer->width, buffer->buffer->height, width, height,
-			scale);
-	wlr_scene_buffer_set_dest_size(buffer, width, height);
+	if (scale != 1.0) {
+		/* Approach A: the buffer is oversized; display it at logical size (a
+		 * clean downscale — bilinear keeps it smooth). */
+		wlr_scene_buffer_set_dest_size(buffer,
+				(int)round(buffer->buffer->width / scale),
+				(int)round(buffer->buffer->height / scale));
+		wlr_scene_buffer_set_filter_mode(buffer, WLR_SCALE_FILTER_BILINEAR);
+	} else {
+		/* Passthrough (xwayland-scale off): a 1x buffer the output will
+		 * upscale — nearest-neighbour keeps it pixel-sharp instead of smeared,
+		 * matching Hyprland's use_nearest_neighbor. */
+		wlr_scene_buffer_set_filter_mode(buffer, WLR_SCALE_FILTER_NEAREST);
+	}
 }
 
-/* Runs after the scene's own commit handler (registered earlier), so this
- * dest-size override wins each commit. */
+/* Runs after the scene's own commit handler (registered earlier), so these
+ * per-buffer overrides win each commit. */
 static void descale_surface_tree (
 	struct w3ld_server *server,
 	struct wlr_scene_tree *tree
 ) {
 	double scale = w3ld_xwayland_effective_scale(server);
-	if (scale == 1.0)
-		return;
-	wlr_scene_node_for_each_buffer(&tree->node, buffer_descale, &scale);
+	wlr_scene_node_for_each_buffer(&tree->node, buffer_scale_x11, &scale);
 }
 
 /* ---------------------------------------------------------------- unmanaged */
