@@ -103,6 +103,8 @@ struct w3ld_server {
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_toplevel_decoration;
 	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
+	struct wlr_ext_workspace_manager_v1 *ext_workspace_manager;
+	struct wl_listener ext_workspace_commit;
 	struct wl_list windows; /* w3ld_window.link — tiling/stack order */
 	struct w3ld_window *focused;
 
@@ -172,6 +174,7 @@ struct w3ld_output {
 	int previous_number; /* for workspace-back */
 
 	struct wl_list layer_surfaces; /* w3ld_layer_surface.link */
+	struct wlr_ext_workspace_group_handle_v1 *ext_group;
 
 	char *status_workspaces; /* last broadcast line, for diffing */
 	char *status_window;
@@ -187,6 +190,7 @@ struct w3ld_workspace {
 	struct w3ld_output *output;
 	int number;
 	char *name; /* optional label, or NULL */
+	struct wlr_ext_workspace_handle_v1 *ext; /* ext-workspace handle, or NULL */
 };
 
 /* ------------------------------------------------------------------- window */
@@ -399,6 +403,16 @@ void w3ld_gamma_set (
 	struct w3ld_server *server,
 	double temperature,
 	double brightness
+);
+
+/* ext-workspace protocol */
+void w3ld_ext_workspace_setup (struct w3ld_server *server);
+void w3ld_ext_workspace_sync (struct w3ld_server *server);
+
+/* actions helper shared with protocol handlers */
+void w3ld_switch_workspace (
+	struct w3ld_output *output,
+	int number
 );
 
 /* status stream */

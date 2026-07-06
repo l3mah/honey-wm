@@ -10,7 +10,7 @@
 
 /* ------------------------------------------------------------------- helpers */
 
-static void switch_workspace (
+void w3ld_switch_workspace (
 	struct w3ld_output *output,
 	int number
 ) {
@@ -68,7 +68,7 @@ void w3ld_action_workspace (
 	int number
 ) {
 	if (server->focused_output)
-		switch_workspace(server->focused_output, number);
+		w3ld_switch_workspace(server->focused_output, number);
 }
 
 void w3ld_action_move_to_workspace (
@@ -88,7 +88,7 @@ void w3ld_action_move_to_workspace (
 
 void w3ld_action_workspace_back (struct w3ld_server *server) {
 	if (server->focused_output)
-		switch_workspace(server->focused_output,
+		w3ld_switch_workspace(server->focused_output,
 				server->focused_output->previous_number);
 }
 
@@ -107,7 +107,7 @@ void w3ld_action_workspace_cycle (
 	if (link == &output->active->link)
 		return;
 	struct w3ld_workspace *target = wl_container_of(link, target, link);
-	switch_workspace(output, target->number);
+	w3ld_switch_workspace(output, target->number);
 }
 
 /* ---------------------------------------------------------------- directional */

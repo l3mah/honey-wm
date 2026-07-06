@@ -102,6 +102,7 @@ int main (
 	w3ld_protocols_setup(&server);
 	w3ld_handlers_setup(&server);
 	w3ld_gamma_setup(&server);
+	w3ld_ext_workspace_setup(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);
 	if (!socket) {

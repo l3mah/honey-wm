@@ -9,6 +9,8 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include <wlr/types/wlr_ext_workspace_v1.h>
+
 #include "w3ld.h"
 
 /* ------------------------------------------------------------------- listeners */
@@ -58,9 +60,13 @@ static void output_destroy (
 	struct w3ld_workspace *workspace, *tmp;
 	wl_list_for_each_safe(workspace, tmp, &output->workspaces, link) {
 		wl_list_remove(&workspace->link);
+		if (workspace->ext)
+			wlr_ext_workspace_handle_v1_destroy(workspace->ext);
 		free(workspace->name);
 		free(workspace);
 	}
+	if (output->ext_group)
+		wlr_ext_workspace_group_handle_v1_destroy(output->ext_group);
 	free(output->status_workspaces);
 	free(output->status_window);
 
