@@ -15,6 +15,8 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+
+#include <wlr/types/wlr_keyboard.h>
 #include <unistd.h>
 
 #include "w3ld.h"
@@ -421,6 +423,53 @@ static void dispatch (
 	}
 	if (!strcmp(line, "windows")) {
 		cmd_windows(server, reply, reply_size);
+		return;
+	}
+	if (!strcmp(line, "outputs")) {
+		size_t offset = 0;
+		struct w3ld_output *output;
+		wl_list_for_each(output, &server->outputs, link) {
+			offset += snprintf(reply + offset, reply_size - offset,
+					"%s %dx%d at %d,%d scale %.2f ws %d%s\n",
+					output->wlr_output->name,
+					output->wlr_output->width, output->wlr_output->height,
+					output->usable.x, output->usable.y,
+					output->wlr_output->scale,
+					output->active ? output->active->number : 0,
+					output == server->focused_output ? " [focused]" : "");
+			if (offset >= reply_size - 1)
+				break;
+		}
+		if (offset == 0)
+			snprintf(reply, reply_size, "(no outputs)");
+		return;
+	}
+	if (!strcmp(line, "binds")) {
+		size_t offset = 0;
+		struct w3ld_keybind *keybind;
+		wl_list_for_each(keybind, &server->keybinds, link) {
+			char name[64];
+			xkb_keysym_get_name(keybind->sym, name, sizeof name);
+			offset += snprintf(reply + offset, reply_size - offset,
+					"%s%s%s%s%s -> %s\n",
+					keybind->modifiers & WLR_MODIFIER_LOGO ? "super+" : "",
+					keybind->modifiers & WLR_MODIFIER_CTRL ? "ctrl+" : "",
+					keybind->modifiers & WLR_MODIFIER_ALT ? "alt+" : "",
+					keybind->modifiers & WLR_MODIFIER_SHIFT ? "shift+" : "",
+					name, keybind->action);
+			if (offset >= reply_size - 1)
+				break;
+		}
+		if (offset == 0)
+			snprintf(reply, reply_size, "(no binds)");
+		return;
+	}
+	if (!strncmp(line, "get ", 4)) {
+		char *key = line + 4;
+		while (*key == ' ')
+			key++;
+		if (!w3ld_config_get(server, key, reply, reply_size))
+			snprintf(reply, reply_size, "error: unknown key '%s'", key);
 		return;
 	}
 

@@ -540,7 +540,9 @@ void w3ld_seat_setup (struct w3ld_server *server) {
 
 	server->cursor = wlr_cursor_create();
 	wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
-	server->xcursor_manager = wlr_xcursor_manager_create(NULL, 24);
+	server->cursor_size = 24;
+	server->xcursor_manager = wlr_xcursor_manager_create(NULL,
+			server->cursor_size);
 
 	server->cursor_motion.notify = cursor_motion;
 	wl_signal_add(&server->cursor->events.motion, &server->cursor_motion);

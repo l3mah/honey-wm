@@ -171,6 +171,8 @@ struct w3ld_server {
 	struct wlr_seat *seat;
 	struct wlr_cursor *cursor;
 	struct wlr_xcursor_manager *xcursor_manager;
+	char *cursor_theme; /* NULL = XCURSOR_THEME env / default */
+	int cursor_size;
 	struct wl_list keyboards; /* w3ld_keyboard.link */
 	struct wl_listener new_input;
 
@@ -495,6 +497,10 @@ void w3ld_action_nmaster (
 	int delta
 );
 void w3ld_action_orientation_cycle (struct w3ld_server *server);
+void w3ld_action_swap_dir (
+	struct w3ld_server *server,
+	enum w3ld_direction direction
+);
 
 /* config */
 void w3ld_config_defaults (struct w3ld_config *config);
@@ -506,6 +512,12 @@ bool w3ld_config_set (
 bool w3ld_parse_orientation (
 	const char *value,
 	enum w3ld_orientation *out
+);
+bool w3ld_config_get (
+	struct w3ld_server *server,
+	const char *key,
+	char *reply,
+	size_t reply_size
 );
 
 /* bindings + IPC */

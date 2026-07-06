@@ -314,6 +314,49 @@ void w3ld_action_fake_fullscreen (struct w3ld_server *server) {
 
 /* ---------------------------------------------------------------- directional */
 
+/* The nearest window in a direction from the focused window's centre, scored
+ * by primary-axis distance plus a perpendicular penalty. workspace limits the
+ * search to tiled windows of that workspace; NULL searches every visible
+ * window (crossing monitors). */
+static struct w3ld_window *window_in_direction (
+	struct w3ld_server *server,
+	int from_x,
+	int from_y,
+	enum w3ld_direction direction,
+	struct w3ld_workspace *workspace
+) {
+	struct w3ld_window *best = NULL;
+	long best_score = -1;
+	struct w3ld_window *window;
+	wl_list_for_each(window, &server->windows, link) {
+		if (!window->mapped || window == server->focused)
+			continue;
+		if (workspace) {
+			if (window->workspace != workspace
+					|| !w3ld_window_is_tiled(window))
+				continue;
+		} else if (window->workspace != window->workspace->output->active) {
+			continue;
+		}
+		int dx = (window->geom.x + window->geom.width / 2) - from_x;
+		int dy = (window->geom.y + window->geom.height / 2) - from_y;
+
+		long primary, secondary;
+		switch (direction) {
+		case W3LD_DIR_LEFT:  if (dx >= 0) continue; primary = -dx; secondary = labs(dy); break;
+		case W3LD_DIR_RIGHT: if (dx <= 0) continue; primary =  dx; secondary = labs(dy); break;
+		case W3LD_DIR_UP:    if (dy >= 0) continue; primary = -dy; secondary = labs(dx); break;
+		default:             if (dy <= 0) continue; primary =  dy; secondary = labs(dx); break;
+		}
+		long score = primary + secondary * 2;
+		if (best_score < 0 || score < best_score) {
+			best_score = score;
+			best = window;
+		}
+	}
+	return best;
+}
+
 /* Focus the nearest visible window in a direction (crossing monitors); if there
  * is none, step focus to the adjacent output that way (which may be empty). */
 void w3ld_action_focus_dir (
@@ -334,31 +377,8 @@ void w3ld_action_focus_dir (
 			+ server->focused_output->usable.height / 2;
 	}
 
-	struct w3ld_window *best = NULL;
-	long best_score = -1;
-	struct w3ld_window *window;
-	wl_list_for_each(window, &server->windows, link) {
-		if (!window->mapped || window == server->focused)
-			continue;
-		if (window->workspace != window->workspace->output->active)
-			continue;
-		int dx = (window->geom.x + window->geom.width / 2) - from_x;
-		int dy = (window->geom.y + window->geom.height / 2) - from_y;
-
-		long primary, secondary;
-		switch (direction) {
-		case W3LD_DIR_LEFT:  if (dx >= 0) continue; primary = -dx; secondary = labs(dy); break;
-		case W3LD_DIR_RIGHT: if (dx <= 0) continue; primary =  dx; secondary = labs(dy); break;
-		case W3LD_DIR_UP:    if (dy >= 0) continue; primary = -dy; secondary = labs(dx); break;
-		default:             if (dy <= 0) continue; primary =  dy; secondary = labs(dx); break;
-		}
-		long score = primary + secondary * 2;
-		if (best_score < 0 || score < best_score) {
-			best_score = score;
-			best = window;
-		}
-	}
-
+	struct w3ld_window *best =
+		window_in_direction(server, from_x, from_y, direction, NULL);
 	if (best) {
 		w3ld_focus_window(best);
 	} else {
@@ -367,6 +387,26 @@ void w3ld_action_focus_dir (
 		if (output)
 			w3ld_focus_output_active(output);
 	}
+	w3ld_warp_to_focus(server);
+}
+
+/* Swap the focused window with the nearest tiled window in a direction on the
+ * same workspace — spatial reordering, natural in the grid layout. */
+void w3ld_action_swap_dir (
+	struct w3ld_server *server,
+	enum w3ld_direction direction
+) {
+	struct w3ld_window *window = server->focused;
+	if (!window || !w3ld_window_is_tiled(window))
+		return;
+	struct w3ld_window *other = window_in_direction(server,
+			window->geom.x + window->geom.width / 2,
+			window->geom.y + window->geom.height / 2,
+			direction, window->workspace);
+	if (!other)
+		return;
+	list_swap(&window->link, &other->link);
+	w3ld_arrange(server);
 	w3ld_warp_to_focus(server);
 }
 

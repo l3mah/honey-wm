@@ -182,6 +182,8 @@ bool w3ld_action_run (
 		w3ld_action_swap(server, -1);
 	} else if (!strcmp(verb, "swap-master")) {
 		w3ld_action_swap_master(server);
+	} else if (!strcmp(verb, "swap-dir")) {
+		w3ld_action_swap_dir(server, parse_direction(arg));
 	} else if (!strcmp(verb, "master-mfact")) {
 		if (arg)
 			w3ld_action_mfact(server, atof(arg));

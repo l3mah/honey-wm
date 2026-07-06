@@ -135,6 +135,23 @@ bool w3ld_config_set (
 		config->dim_inactive = atof(value);
 	} else if (!strcmp(key, "error-window")) {
 		config->error_window = parse_bool(value);
+	} else if (!strcmp(key, "cursor-theme") || !strcmp(key, "cursor-size")) {
+		if (!strcmp(key, "cursor-theme")) {
+			free(server->cursor_theme);
+			server->cursor_theme = strdup(value);
+			setenv("XCURSOR_THEME", value, true);
+		} else {
+			int size = atoi(value);
+			if (size < 1)
+				return false;
+			server->cursor_size = size;
+			setenv("XCURSOR_SIZE", value, true);
+		}
+		wlr_xcursor_manager_destroy(server->xcursor_manager);
+		server->xcursor_manager = wlr_xcursor_manager_create(
+				server->cursor_theme, server->cursor_size);
+		wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager,
+				"default");
 	} else if (!strcmp(key, "layout")) {
 		const struct w3ld_layout *layout = w3ld_layout_by_name(value);
 		if (!layout)
@@ -160,4 +177,89 @@ bool w3ld_config_set (
 
 	w3ld_arrange(server);
 	return true;
+}
+
+/* --------------------------------------------------------------------- get */
+
+static const char *orientation_name (enum w3ld_orientation orientation) {
+	switch (orientation) {
+	case W3LD_ORIENT_LEFT: return "left";
+	case W3LD_ORIENT_RIGHT: return "right";
+	case W3LD_ORIENT_TOP: return "top";
+	default: return "bottom";
+	}
+}
+
+bool w3ld_config_get (
+	struct w3ld_server *server,
+	const char *key,
+	char *reply,
+	size_t reply_size
+) {
+	struct w3ld_config *config = &server->config;
+
+	struct {
+		const char *key;
+		enum { V_BOOL, V_INT, V_DOUBLE, V_COLOR, V_STRING } kind;
+		const void *value;
+	} keys[] = {
+		{ "layout", V_STRING, config->layout->name },
+		{ "master-mfact", V_DOUBLE, &config->master_mfact },
+		{ "master-nmaster", V_INT, &config->master_nmaster },
+		{ "master-orientation", V_STRING,
+			orientation_name(config->master_orientation) },
+		{ "spiral-ratio", V_DOUBLE, &config->spiral_ratio },
+		{ "spiral-first-split", V_STRING,
+			config->spiral_horizontal ? "horizontal" : "vertical" },
+		{ "grid-columns", V_INT, &config->grid_columns },
+		{ "gaps-in", V_INT, &config->gaps_in },
+		{ "gaps-out", V_INT, &config->gaps_out },
+		{ "smart-gaps", V_BOOL, &config->smart_gaps },
+		{ "border-size", V_INT, &config->border_size },
+		{ "border-color-active", V_COLOR, &config->border_color_active },
+		{ "border-color-inactive", V_COLOR, &config->border_color_inactive },
+		{ "float-width", V_DOUBLE, &config->float_width },
+		{ "float-height", V_DOUBLE, &config->float_height },
+		{ "float-app-size", V_BOOL, &config->float_app_size },
+		{ "follow-mouse", V_BOOL, &config->follow_mouse },
+		{ "mouse-follows-focus", V_BOOL, &config->mouse_follows_focus },
+		{ "new-window-master", V_BOOL, &config->new_window_master },
+		{ "focus-new", V_BOOL, &config->focus_new },
+		{ "mouse-focus-new", V_BOOL, &config->mouse_focus_new },
+		{ "exit-fullscreen-on-new", V_BOOL, &config->exit_fullscreen_on_new },
+		{ "allow-tearing", V_BOOL, &config->allow_tearing },
+		{ "drop-at-cursor", V_BOOL, &config->drop_at_cursor },
+		{ "resize-on-border", V_BOOL, &config->resize_on_border },
+		{ "scroll-workspace", V_BOOL, &config->scroll_workspace },
+		{ "active-opacity", V_DOUBLE, &config->active_opacity },
+		{ "inactive-opacity", V_DOUBLE, &config->inactive_opacity },
+		{ "dim-inactive", V_DOUBLE, &config->dim_inactive },
+		{ "error-window", V_BOOL, &config->error_window },
+	};
+
+	for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {
+		if (strcmp(key, keys[i].key) != 0)
+			continue;
+		switch (keys[i].kind) {
+		case V_BOOL:
+			snprintf(reply, reply_size, "%s",
+					*(const bool *)keys[i].value ? "true" : "false");
+			break;
+		case V_INT:
+			snprintf(reply, reply_size, "%d", *(const int *)keys[i].value);
+			break;
+		case V_DOUBLE:
+			snprintf(reply, reply_size, "%g", *(const double *)keys[i].value);
+			break;
+		case V_COLOR:
+			snprintf(reply, reply_size, "0x%08X",
+					*(const uint32_t *)keys[i].value);
+			break;
+		case V_STRING:
+			snprintf(reply, reply_size, "%s", (const char *)keys[i].value);
+			break;
+		}
+		return true;
+	}
+	return false;
 }
