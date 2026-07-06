@@ -413,6 +413,19 @@ void w3ld_window_handle_map (struct w3ld_window *window) {
 	window->workspace = server->focused_output->active;
 	free(window->initial_title);
 	window->initial_title = strdup(w3ld_window_title(window));
+
+	/* Dialogs (a toplevel with a parent) float centred rather than tiling. */
+	if (window->type == W3LD_WINDOW_XDG && window->xdg_toplevel->parent) {
+		window->floating = true;
+		struct wlr_box *geometry = &window->xdg_toplevel->base->geometry;
+		int width = geometry->width > 0 ? geometry->width
+			: (int)(server->focused_output->usable.width * 0.4);
+		int height = geometry->height > 0 ? geometry->height
+			: (int)(server->focused_output->usable.height * 0.4);
+		w3ld_window_set_float_geom(window, width, height);
+		w3ld_window_update_layer(window);
+	}
+
 	bool no_focus = apply_rules(window);
 
 	/* A fullscreen/maximized window on this workspace either yields to the
@@ -580,6 +593,59 @@ static void window_destroy (
 	free(window);
 }
 
+/* --------------------------------------------------------------------- popups */
+
+/* wlr_scene_xdg_surface_create renders a surface and its sub-surfaces but NOT
+ * its popups; each popup needs its own scene node parented to its parent's
+ * scene tree (stored in xdg_surface->data). Without this, menus are invisible
+ * even though the client's keyboard grab still works. */
+struct w3ld_popup {
+	struct wlr_xdg_popup *popup;
+	struct wl_listener commit;
+	struct wl_listener destroy;
+};
+
+static void popup_commit (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_popup *popup = wl_container_of(listener, popup, commit);
+	if (popup->popup->base->initial_commit)
+		wlr_xdg_surface_schedule_configure(popup->popup->base);
+}
+
+static void popup_destroy (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct w3ld_popup *popup = wl_container_of(listener, popup, destroy);
+	wl_list_remove(&popup->commit.link);
+	wl_list_remove(&popup->destroy.link);
+	free(popup);
+}
+
+static void new_xdg_popup (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct wlr_xdg_popup *xdg_popup = data;
+	struct wlr_xdg_surface *parent =
+		wlr_xdg_surface_try_from_wlr_surface(xdg_popup->parent);
+	if (!parent || !parent->data)
+		return; /* parent scene tree unknown (e.g. a layer surface) */
+
+	struct wlr_scene_tree *parent_tree = parent->data;
+	xdg_popup->base->data =
+		wlr_scene_xdg_surface_create(parent_tree, xdg_popup->base);
+
+	struct w3ld_popup *popup = calloc(1, sizeof *popup);
+	popup->popup = xdg_popup;
+	popup->commit.notify = popup_commit;
+	wl_signal_add(&xdg_popup->base->surface->events.commit, &popup->commit);
+	popup->destroy.notify = popup_destroy;
+	wl_signal_add(&xdg_popup->events.destroy, &popup->destroy);
+}
+
 /* --------------------------------------------------------------- new toplevel */
 
 static void new_xdg_toplevel (
@@ -596,6 +662,7 @@ static void new_xdg_toplevel (
 	window->xdg_toplevel = toplevel;
 	window->surface_tree = wlr_scene_xdg_surface_create(
 			server->layers[W3LD_LAYER_TILED], toplevel->base);
+	toplevel->base->data = window->surface_tree; /* for child popups */
 	w3ld_window_finish_setup(window);
 
 	window->map.notify = window_map;
@@ -628,4 +695,7 @@ void w3ld_window_setup (struct w3ld_server *server) {
 	server->new_xdg_toplevel.notify = new_xdg_toplevel;
 	wl_signal_add(&server->xdg_shell->events.new_toplevel,
 			&server->new_xdg_toplevel);
+	server->new_xdg_popup.notify = new_xdg_popup;
+	wl_signal_add(&server->xdg_shell->events.new_popup,
+			&server->new_xdg_popup);
 }

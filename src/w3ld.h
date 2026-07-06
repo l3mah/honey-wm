@@ -151,6 +151,7 @@ struct w3ld_server {
 
 	struct wlr_xdg_shell *xdg_shell;
 	struct wl_listener new_xdg_toplevel;
+	struct wl_listener new_xdg_popup;
 	struct wl_listener new_toplevel_decoration;
 	struct wlr_foreign_toplevel_manager_v1 *foreign_toplevel_manager;
 	struct wlr_ext_workspace_manager_v1 *ext_workspace_manager;
