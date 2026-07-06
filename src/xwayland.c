@@ -260,7 +260,11 @@ static void handle_dissociate (
 	}
 }
 
-/* Honor configure requests for windows the layout doesn't own yet. */
+/* X11 apps resize themselves (restoring remembered bounds, dialogs sizing to
+ * content). Before the layout owns the window the request is honored; a mapped
+ * floating window gets its request (descaled into the float geometry); a mapped
+ * tiled window is answered by re-asserting the layout's geometry — otherwise
+ * the app's size sticks and the window shrinks inside its tile. */
 static void handle_request_configure (
 	struct wl_listener *listener,
 	void *data
@@ -268,9 +272,22 @@ static void handle_request_configure (
 	struct w3ld_xwayland_surface *xw =
 		wl_container_of(listener, xw, request_configure);
 	struct wlr_xwayland_surface_configure_event *event = data;
-	if (!xw->window || !xw->window->mapped)
+	struct w3ld_window *window = xw->window;
+
+	if (!window || !window->mapped) {
 		wlr_xwayland_surface_configure(xw->xwayland_surface, event->x,
 				event->y, event->width, event->height);
+		return;
+	}
+
+	if (window->floating) {
+		double scale = w3ld_xwayland_effective_scale(xw->server);
+		window->float_geom.x = (int)round(event->x / scale);
+		window->float_geom.y = (int)round(event->y / scale);
+		window->float_geom.width = (int)round(event->width / scale);
+		window->float_geom.height = (int)round(event->height / scale);
+	}
+	w3ld_arrange(xw->server); /* re-places: float request applied, tile re-asserted */
 }
 
 static void handle_destroy (
