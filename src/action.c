@@ -251,7 +251,7 @@ static int float_size (
 
 /* Seed the floating geometry: the configured size (or the app's own choice),
  * centred on the window's output. */
-static void float_seed (struct w3ld_window *window) {
+void w3ld_float_seed (struct w3ld_window *window) {
 	struct w3ld_server *server = window->server;
 	struct wlr_box *usable = &window->workspace->output->usable;
 
@@ -289,7 +289,7 @@ void w3ld_action_toggle_float (struct w3ld_server *server) {
 	w3ld_window_clear_states(window);
 	window->floating = enable;
 	if (enable)
-		float_seed(window);
+		w3ld_float_seed(window);
 	apply_state_change(window);
 }
 

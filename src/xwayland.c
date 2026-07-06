@@ -95,7 +95,7 @@ static void x11_request_maximize (
 	struct w3ld_window *window =
 		wl_container_of(listener, window, request_maximize);
 	/* Honored only for floating windows; the layout owns tiled geometry. */
-	if (!window->mapped || !window->floating)
+	if (!window->mapped || !window->floating || window->suppress_maximize)
 		return;
 	window->maximized = window->xwayland_surface->maximized_horz
 		|| window->xwayland_surface->maximized_vert;
@@ -165,6 +165,7 @@ static void handle_dissociate (
 		wl_list_remove(&window->set_app_id.link);
 		wl_list_remove(&window->request_fullscreen.link);
 		wl_list_remove(&window->request_maximize.link);
+		free(window->initial_title);
 		wlr_scene_node_destroy(&window->surface_tree->node);
 		wlr_scene_node_destroy(&window->tree->node);
 		free(window);

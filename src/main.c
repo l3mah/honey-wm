@@ -88,6 +88,7 @@ int main (
 	w3ld_config_defaults(&server.config);
 	/* Ready before any arrange (which broadcasts) runs during backend start. */
 	wl_list_init(&server.ipc_clients);
+	wl_list_init(&server.rules);
 	server.ipc_fd = -1;
 
 	server.display = wl_display_create();

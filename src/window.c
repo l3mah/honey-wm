@@ -8,6 +8,7 @@
  * calls the shared lifecycle.
  */
 #include <stdlib.h>
+#include <string.h>
 
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/xwayland/xwayland.h>
@@ -223,6 +224,77 @@ void w3ld_focus_output_active (struct w3ld_output *output) {
 	w3ld_status_broadcast(server);
 }
 
+/* --------------------------------------------------------------------- rules */
+
+static bool rule_matches (
+	struct w3ld_rule *rule,
+	struct w3ld_window *window
+) {
+	const char *value = rule->field == W3LD_RULE_APP_ID
+		? w3ld_window_app_id(window)
+		: rule->field == W3LD_RULE_TITLE
+		? w3ld_window_title(window)
+		: (window->initial_title ? window->initial_title : "");
+	if (rule->regex)
+		return regexec(&rule->re, value, 0, NULL, 0) == 0;
+	return strcasestr(value, rule->pattern) != NULL;
+}
+
+/* Applied once, at map, after the workspace default is assigned. Returns
+ * whether a no-focus rule matched. */
+static bool apply_rules (struct w3ld_window *window) {
+	struct w3ld_server *server = window->server;
+	bool no_focus = false;
+
+	struct w3ld_rule *rule;
+	wl_list_for_each(rule, &server->rules, link) {
+		if (!rule_matches(rule, window))
+			continue;
+		switch (rule->action) {
+		case W3LD_RULE_WORKSPACE: {
+			struct w3ld_workspace *workspace;
+			if (w3ld_parse_ws_addr(server, rule->ws_addr, &workspace))
+				window->workspace = workspace;
+			break;
+		}
+		case W3LD_RULE_FLOAT: {
+			window->floating = true;
+			w3ld_float_seed(window);
+			struct wlr_box *usable = &window->workspace->output->usable;
+			int width = rule->float_w_px ? rule->float_w_px
+				: rule->float_w > 0 ? (int)(usable->width * rule->float_w) : 0;
+			int height = rule->float_h_px ? rule->float_h_px
+				: rule->float_h > 0 ? (int)(usable->height * rule->float_h) : 0;
+			if (width > 0 && height > 0) {
+				window->float_pending_app_size = false;
+				window->float_geom.width = width;
+				window->float_geom.height = height;
+				window->float_geom.x = usable->x + (usable->width - width) / 2;
+				window->float_geom.y = usable->y
+					+ (usable->height - height) / 2;
+			}
+			break;
+		}
+		case W3LD_RULE_TILE:
+			window->floating = false;
+			window->maximized = false;
+			window->fullscreen = false;
+			window->fake_fullscreen = false;
+			break;
+		case W3LD_RULE_SUPPRESS_MAXIMIZE:
+			window->suppress_maximize = true;
+			window->maximized = false;
+			break;
+		case W3LD_RULE_NO_FOCUS:
+			no_focus = true;
+			break;
+		}
+	}
+	w3ld_window_inform_states(window);
+	w3ld_window_update_layer(window);
+	return no_focus;
+}
+
 /* ---------------------------------------------------------- shared lifecycle */
 
 /* Create the border tree; the caller has already created surface_tree. */
@@ -241,6 +313,9 @@ void w3ld_window_handle_map (struct w3ld_window *window) {
 
 	window->mapped = true;
 	window->workspace = server->focused_output->active;
+	free(window->initial_title);
+	window->initial_title = strdup(w3ld_window_title(window));
+	bool no_focus = apply_rules(window);
 
 	/* A fullscreen/maximized window on this workspace either yields to the
 	 * new window or keeps covering it (and keeps focus). Fake-fullscreen is
@@ -277,9 +352,9 @@ void w3ld_window_handle_map (struct w3ld_window *window) {
 		wl_list_insert(server->windows.prev, &window->link);   /* stack tail */
 
 	w3ld_arrange(server);
-	if (server->config.focus_new && !covered)
+	if (server->config.focus_new && !covered && !no_focus)
 		w3ld_focus_window(window);
-	if (server->config.mouse_focus_new && !covered)
+	if (server->config.mouse_focus_new && !covered && !no_focus)
 		wlr_cursor_warp(server->cursor, NULL,
 				window->geom.x + window->geom.width / 2,
 				window->geom.y + window->geom.height / 2);
@@ -383,7 +458,7 @@ static void window_request_maximize (
 ) {
 	struct w3ld_window *window =
 		wl_container_of(listener, window, request_maximize);
-	if (window->mapped && window->floating) {
+	if (window->mapped && window->floating && !window->suppress_maximize) {
 		window->maximized = window->xdg_toplevel->requested.maximized;
 		w3ld_window_inform_states(window);
 		w3ld_window_update_layer(window);
@@ -424,6 +499,7 @@ static void window_destroy (
 	wl_list_remove(&window->set_app_id.link);
 	wl_list_remove(&window->request_fullscreen.link);
 	wl_list_remove(&window->request_maximize.link);
+	free(window->initial_title);
 	wlr_scene_node_destroy(&window->tree->node); /* borders; surface self-frees */
 	free(window);
 }

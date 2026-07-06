@@ -73,7 +73,7 @@ int main (
 		return 0;
 	}
 
-	char reply[1024];
+	char reply[8192];
 	ssize_t count = read(fd, reply, sizeof reply - 1);
 	close(fd);
 	if (count <= 0)

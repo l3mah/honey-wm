@@ -17,6 +17,7 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/box.h>
+#include <regex.h>
 #include <xkbcommon/xkbcommon.h>
 
 struct w3ld_workspace;
@@ -154,6 +155,7 @@ struct w3ld_server {
 	double gamma_brightness;
 
 	struct wl_list keybinds; /* w3ld_keybind.link */
+	struct wl_list rules;    /* w3ld_rule.link */
 
 	int ipc_fd; /* listening control socket, or -1 */
 	struct wl_event_source *ipc_source;
@@ -278,6 +280,8 @@ struct w3ld_window {
 	bool fullscreen;
 	bool maximized;
 	bool fake_fullscreen; /* fill output + tell the client, not exclusive */
+	char *initial_title;  /* title at map time, for initial-title rules */
+	bool suppress_maximize; /* rule: ignore client maximize requests */
 
 	struct wlr_foreign_toplevel_handle_v1 *foreign; /* taskbar handle, or NULL */
 
@@ -308,6 +312,34 @@ struct w3ld_ipc_client {
 	int fd;
 	struct wl_event_source *source;
 	bool subscriber; /* receives the status stream instead of one reply */
+};
+
+/* ------------------------------------------------------------------- rules */
+
+enum w3ld_rule_field {
+	W3LD_RULE_APP_ID,
+	W3LD_RULE_TITLE,
+	W3LD_RULE_INITIAL_TITLE,
+};
+
+enum w3ld_rule_action {
+	W3LD_RULE_WORKSPACE,
+	W3LD_RULE_FLOAT,
+	W3LD_RULE_TILE,
+	W3LD_RULE_SUPPRESS_MAXIMIZE,
+	W3LD_RULE_NO_FOCUS,
+};
+
+struct w3ld_rule {
+	struct wl_list link; /* w3ld_server.rules */
+	enum w3ld_rule_field field;
+	bool regex;
+	regex_t re; /* compiled when regex */
+	char *pattern;
+	enum w3ld_rule_action action;
+	char *ws_addr;               /* WORKSPACE */
+	double float_w, float_h;     /* FLOAT fractions, 0 = default */
+	int float_w_px, float_h_px;  /* FLOAT pixels, 0 = unused */
 };
 
 /* -------------------------------------------------------------- layer surface */
@@ -416,6 +448,7 @@ bool w3ld_window_is_tiled (struct w3ld_window *window);
 void w3ld_window_update_layer (struct w3ld_window *window);
 void w3ld_window_inform_states (struct w3ld_window *window);
 void w3ld_window_clear_states (struct w3ld_window *window);
+void w3ld_float_seed (struct w3ld_window *window);
 void w3ld_action_toggle_float (struct w3ld_server *server);
 void w3ld_action_fullscreen (struct w3ld_server *server);
 void w3ld_action_maximize (struct w3ld_server *server);

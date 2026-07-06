@@ -16,6 +16,195 @@
 
 #include "w3ld.h"
 
+/* --------------------------------------------------------------------- rules */
+
+/* Parse a float size token: "40%" (fraction of the output), "600p"/"600px"
+ * (pixels), bare numbers as fraction (<=1) or percent (>1). */
+static bool parse_dim (
+	const char *token,
+	double *fraction,
+	int *pixels
+) {
+	char *end;
+	double value = strtod(token, &end);
+	if (end == token || value <= 0)
+		return false;
+	*fraction = 0;
+	*pixels = 0;
+	if (!strcmp(end, "%"))
+		*fraction = value / 100.0;
+	else if (!strcmp(end, "p") || !strcmp(end, "px"))
+		*pixels = (int)value;
+	else if (*end == '\0')
+		*fraction = value > 1.0 ? value / 100.0 : value;
+	else
+		return false;
+	return true;
+}
+
+static void free_rule (struct w3ld_rule *rule) {
+	if (rule->regex)
+		regfree(&rule->re);
+	free(rule->pattern);
+	free(rule->ws_addr);
+	free(rule);
+}
+
+/* rule <app-id|title|initial-title>[-re] <pattern...> <action>
+ * action (parsed off the end): workspace <output:N|N> | float [default|W H] |
+ * tile | suppress-maximize | no-focus. Same field+pattern+action replaces. */
+static void cmd_rule (
+	struct w3ld_server *server,
+	char *args,
+	char *reply,
+	size_t reply_size
+) {
+	char *tokens[32];
+	int count = 0;
+	char *save = NULL;
+	for (char *token = strtok_r(args, " \t", &save);
+			token && count < 32; token = strtok_r(NULL, " \t", &save))
+		tokens[count++] = token;
+	if (count < 3) {
+		snprintf(reply, reply_size,
+				"error: usage: rule <field>[-re] <pattern...> <action>");
+		return;
+	}
+
+	enum w3ld_rule_field field;
+	bool regex = false;
+	char *field_token = tokens[0];
+	size_t field_length = strlen(field_token);
+	if (field_length > 3 && !strcmp(field_token + field_length - 3, "-re")) {
+		regex = true;
+		field_token[field_length - 3] = '\0';
+	}
+	if (!strcmp(field_token, "app-id"))
+		field = W3LD_RULE_APP_ID;
+	else if (!strcmp(field_token, "title"))
+		field = W3LD_RULE_TITLE;
+	else if (!strcmp(field_token, "initial-title"))
+		field = W3LD_RULE_INITIAL_TITLE;
+	else {
+		snprintf(reply, reply_size,
+				"error: field must be app-id, title or initial-title");
+		return;
+	}
+
+	/* Parse the action off the end. */
+	enum w3ld_rule_action action;
+	char *ws_addr = NULL;
+	double float_w = 0, float_h = 0;
+	int float_w_px = 0, float_h_px = 0;
+	int pattern_end; /* exclusive index into tokens */
+	char *last = tokens[count - 1];
+
+	if (!strcmp(last, "tile")) {
+		action = W3LD_RULE_TILE;
+		pattern_end = count - 1;
+	} else if (!strcmp(last, "suppress-maximize")) {
+		action = W3LD_RULE_SUPPRESS_MAXIMIZE;
+		pattern_end = count - 1;
+	} else if (!strcmp(last, "no-focus")) {
+		action = W3LD_RULE_NO_FOCUS;
+		pattern_end = count - 1;
+	} else if (count >= 3 && !strcmp(tokens[count - 2], "workspace")) {
+		action = W3LD_RULE_WORKSPACE;
+		ws_addr = last;
+		pattern_end = count - 2;
+	} else if (!strcmp(last, "float")) {
+		action = W3LD_RULE_FLOAT;
+		pattern_end = count - 1;
+	} else if (count >= 3 && !strcmp(tokens[count - 2], "float")
+			&& !strcmp(last, "default")) {
+		action = W3LD_RULE_FLOAT;
+		pattern_end = count - 2;
+	} else if (count >= 4 && !strcmp(tokens[count - 3], "float")) {
+		action = W3LD_RULE_FLOAT;
+		if (!parse_dim(tokens[count - 2], &float_w, &float_w_px)
+				|| !parse_dim(last, &float_h, &float_h_px)) {
+			snprintf(reply, reply_size, "error: bad float size");
+			return;
+		}
+		pattern_end = count - 3;
+	} else {
+		snprintf(reply, reply_size, "error: action must be workspace <addr>,"
+				" float [default|W H], tile, suppress-maximize or no-focus");
+		return;
+	}
+	if (pattern_end < 2) {
+		snprintf(reply, reply_size, "error: missing pattern");
+		return;
+	}
+
+	/* Re-join the pattern tokens. */
+	char pattern[256] = {0};
+	size_t offset = 0;
+	for (int i = 1; i < pattern_end; i++)
+		offset += snprintf(pattern + offset, sizeof pattern - offset, "%s%s",
+				i > 1 ? " " : "", tokens[i]);
+
+	struct w3ld_rule *rule = calloc(1, sizeof *rule);
+	rule->field = field;
+	rule->regex = regex;
+	rule->pattern = strdup(pattern);
+	rule->action = action;
+	rule->ws_addr = ws_addr ? strdup(ws_addr) : NULL;
+	rule->float_w = float_w;
+	rule->float_h = float_h;
+	rule->float_w_px = float_w_px;
+	rule->float_h_px = float_h_px;
+	if (regex && regcomp(&rule->re, pattern,
+			REG_EXTENDED | REG_ICASE | REG_NOSUB) != 0) {
+		free(rule->pattern);
+		free(rule->ws_addr);
+		free(rule);
+		snprintf(reply, reply_size, "error: bad regex '%s'", pattern);
+		return;
+	}
+
+	/* Replace an existing rule with the same field + pattern + action. */
+	struct w3ld_rule *existing;
+	wl_list_for_each(existing, &server->rules, link) {
+		if (existing->field == rule->field && existing->action == rule->action
+				&& existing->regex == rule->regex
+				&& !strcmp(existing->pattern, rule->pattern)) {
+			wl_list_remove(&existing->link);
+			free_rule(existing);
+			break;
+		}
+	}
+	wl_list_insert(server->rules.prev, &rule->link);
+	snprintf(reply, reply_size, "ok");
+}
+
+static void cmd_windows (
+	struct w3ld_server *server,
+	char *reply,
+	size_t reply_size
+) {
+	size_t offset = 0;
+	struct w3ld_window *window;
+	wl_list_for_each(window, &server->windows, link) {
+		if (!window->mapped)
+			continue;
+		offset += snprintf(reply + offset, reply_size - offset,
+				"app-id=\"%s\" title=\"%s\" ws=%s:%d%s%s%s%s%s\n",
+				w3ld_window_app_id(window), w3ld_window_title(window),
+				window->workspace->output->wlr_output->name,
+				window->workspace->number,
+				window == server->focused ? " [focused]" : "",
+				window->floating ? " [float]" : "",
+				window->fullscreen ? " [fs]" : "",
+				window->maximized ? " [max]" : "",
+				window->fake_fullscreen ? " [fake-fs]" : "");
+		if (offset >= reply_size - 1)
+			break;
+	}
+	if (offset == 0)
+		snprintf(reply, reply_size, "(no windows)");
+}
+
 /* ------------------------------------------------------------------ dispatch */
 
 static void dispatch (
@@ -223,6 +412,15 @@ static void dispatch (
 		return;
 	}
 
+	if (!strncmp(line, "rule ", 5)) {
+		cmd_rule(server, line + 5, reply, reply_size);
+		return;
+	}
+	if (!strcmp(line, "windows")) {
+		cmd_windows(server, reply, reply_size);
+		return;
+	}
+
 	if (!strcmp(line, "ping")) {
 		snprintf(reply, reply_size, "pong");
 		return;
@@ -273,7 +471,7 @@ static int handle_client (
 		return 0;
 	}
 
-	char reply[512];
+	char reply[4096];
 	dispatch(client->server, buffer, reply, sizeof reply);
 	send(fd, reply, strlen(reply), MSG_NOSIGNAL);
 	client_drop(client);
