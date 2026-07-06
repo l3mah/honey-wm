@@ -12,7 +12,7 @@
 
 CC       ?= cc
 SCANNER  ?= wayland-scanner
-PKGS      = wlroots-0.20 wayland-server xkbcommon pixman-1 libinput \
+PKGS      = wlroots-0.20 wayland-server xkbcommon pixman-1 libinput libdrm \
             xcb xcb-ewmh xcb-icccm
 PKG_CFLAGS = $(shell pkg-config --cflags $(PKGS))
 PKG_LIBS   = $(shell pkg-config --libs $(PKGS))

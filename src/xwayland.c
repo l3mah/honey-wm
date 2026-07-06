@@ -6,9 +6,12 @@
  * redirect surfaces (menus, tooltips, drag icons) are unmanaged: shown at their
  * own coordinates in the TOP layer, never tiled or focused.
  */
+#include <drm_fourcc.h>
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
+#include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/xwayland/xwayland.h>
 
@@ -304,6 +307,45 @@ static void handle_new_surface (
 	wl_signal_add(&xsurface->events.destroy, &xw->destroy);
 }
 
+/* A minimal wlr_buffer wrapping xcursor pixels, for wlr_xwayland_set_cursor
+ * (without a cursor Xwayland shows the X11 root fallback, the X shape). */
+struct w3ld_pixel_buffer {
+	struct wlr_buffer base;
+	uint8_t *data;
+	size_t stride;
+};
+
+static void pixel_buffer_destroy (struct wlr_buffer *buffer) {
+	struct w3ld_pixel_buffer *pixel =
+		wl_container_of(buffer, pixel, base);
+	free(pixel->data);
+	free(pixel);
+}
+
+static bool pixel_buffer_begin_access (
+	struct wlr_buffer *buffer,
+	uint32_t flags,
+	void **data,
+	uint32_t *format,
+	size_t *stride
+) {
+	struct w3ld_pixel_buffer *pixel =
+		wl_container_of(buffer, pixel, base);
+	*data = pixel->data;
+	*format = DRM_FORMAT_ARGB8888;
+	*stride = pixel->stride;
+	return true;
+}
+
+static void pixel_buffer_end_access (struct wlr_buffer *buffer) {
+}
+
+static const struct wlr_buffer_impl pixel_buffer_impl = {
+	.destroy = pixel_buffer_destroy,
+	.begin_data_ptr_access = pixel_buffer_begin_access,
+	.end_data_ptr_access = pixel_buffer_end_access,
+};
+
 static void handle_ready (
 	struct wl_listener *listener,
 	void *data
@@ -311,6 +353,21 @@ static void handle_ready (
 	struct w3ld_server *server =
 		wl_container_of(listener, server, xwayland_ready);
 	wlr_xwayland_set_seat(server->xwayland, server->seat);
+
+	struct wlr_xcursor *xcursor = wlr_xcursor_manager_get_xcursor(
+			server->xcursor_manager, "default", 1);
+	if (!xcursor)
+		return;
+	struct wlr_xcursor_image *image = xcursor->images[0];
+
+	struct w3ld_pixel_buffer *pixel = calloc(1, sizeof *pixel);
+	pixel->stride = image->width * 4;
+	pixel->data = malloc(pixel->stride * image->height);
+	memcpy(pixel->data, image->buffer, pixel->stride * image->height);
+	wlr_buffer_init(&pixel->base, &pixel_buffer_impl, image->width,
+			image->height);
+	wlr_xwayland_set_cursor(server->xwayland, &pixel->base,
+			image->hotspot_x, image->hotspot_y);
 }
 
 /* -------------------------------------------------------------------- setup */
