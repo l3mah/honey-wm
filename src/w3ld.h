@@ -305,6 +305,7 @@ struct w3ld_window {
 	bool suppress_maximize; /* rule: ignore client maximize requests */
 
 	struct wlr_foreign_toplevel_handle_v1 *foreign; /* taskbar handle, or NULL */
+	struct wlr_output *foreign_output; /* output the foreign handle reports, or NULL */
 
 	struct wl_listener map;
 	struct wl_listener unmap;

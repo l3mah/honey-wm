@@ -498,8 +498,7 @@ void w3ld_window_handle_map (struct w3ld_window *window) {
 	window->foreign = wlr_foreign_toplevel_handle_v1_create(
 			server->foreign_toplevel_manager);
 	foreign_update(window);
-	wlr_foreign_toplevel_handle_v1_output_enter(window->foreign,
-			window->workspace->output->wlr_output);
+	/* Output association is maintained by w3ld_arrange (tracks visibility). */
 	window->foreign_activate.notify = foreign_activate;
 	wl_signal_add(&window->foreign->events.request_activate,
 			&window->foreign_activate);

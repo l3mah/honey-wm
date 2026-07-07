@@ -12,6 +12,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <wlr/types/wlr_foreign_toplevel_management_v1.h>
+
 #include "w3ld.h"
 
 #define MAX_TILED 64
@@ -297,6 +299,22 @@ void w3ld_arrange (struct w3ld_server *server) {
 			&& window->workspace->output->active == window->workspace;
 		wlr_scene_node_set_enabled(&window->tree->node, visible);
 		wlr_scene_node_set_enabled(&window->surface_tree->node, visible);
+
+		/* Keep the foreign-toplevel output association in sync with actual
+		 * visibility: a window on a hidden workspace is on no output, a moved
+		 * window changes output. Taskbars filter on this (all-outputs:false
+		 * shows only the visible/current-workspace windows). */
+		struct wlr_output *foreign_output = visible
+			? window->workspace->output->wlr_output : NULL;
+		if (window->foreign && foreign_output != window->foreign_output) {
+			if (window->foreign_output)
+				wlr_foreign_toplevel_handle_v1_output_leave(window->foreign,
+						window->foreign_output);
+			if (foreign_output)
+				wlr_foreign_toplevel_handle_v1_output_enter(window->foreign,
+						foreign_output);
+			window->foreign_output = foreign_output;
+		}
 	}
 
 	w3ld_ext_workspace_sync(server);
