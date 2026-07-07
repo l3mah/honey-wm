@@ -133,7 +133,23 @@ static void send_to_subscribers (
 	}
 }
 
+/* Whether any connected client is a status subscriber. */
+static bool has_subscribers (struct w3ld_server *server) {
+	struct w3ld_ipc_client *client;
+	wl_list_for_each(client, &server->ipc_clients, link) {
+		if (client->subscriber)
+			return true;
+	}
+	return false;
+}
+
 void w3ld_status_broadcast (struct w3ld_server *server) {
+	/* Zero-cost when nobody is listening: skip the per-arrange JSON format +
+	 * diff entirely. The standard ext-workspace / foreign-toplevel protocols
+	 * cover generic bars; this stream is an optional hook for custom tooling. */
+	if (!has_subscribers(server))
+		return;
+
 	struct w3ld_output *output;
 	wl_list_for_each(output, &server->outputs, link) {
 		char buffer[1024];
