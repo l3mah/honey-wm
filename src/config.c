@@ -135,7 +135,7 @@ bool w3ld_config_set (
 		config->dim_inactive = atof(value);
 	} else if (!strcmp(key, "error-window")) {
 		config->error_window = parse_bool(value);
-	} else if (!strcmp(key, "xwayland-scale")) {
+	} else if (!strcmp(key, "xwayland-scale")) { /* xwayland-scale (removable) */
 		if (!strcasecmp(value, "off")) {
 			config->xwayland_scale = 0;
 			config->xwayland_scale_auto = false;

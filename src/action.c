@@ -257,7 +257,8 @@ void w3ld_float_seed (struct w3ld_window *window) {
 
 	int width, height;
 	if (server->config.float_app_size && window->type == W3LD_WINDOW_X11) {
-		/* X11 reports its size in the scaled xwayland coordinate space. */
+		/* xwayland-scale (removable): X11 reports its size in the scaled
+		 * xwayland coordinate space. */
 		double scale = w3ld_output_xwayland_scale(window->workspace->output);
 		width = (int)(window->xwayland_surface->width / scale);
 		height = (int)(window->xwayland_surface->height / scale);

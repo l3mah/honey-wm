@@ -31,7 +31,10 @@ struct w3ld_xwayland_surface {
 	struct wl_listener set_geometry;
 };
 
-/* ------------------------------------------------------------------- scaling */
+/* ------------------------------------------------ scaling (removable feature) */
+/* xwayland-scale (removable): the whole section below, through
+ * descale_surface_tree, is the XWayland-scale feature. Removal manifest in
+ * xdg-output.c. XWayland-only — no regular-Wayland path reaches this. */
 
 /* The X11 coordinate space (the Hyprland technique, per monitor): outputs are
  * packed contiguously in a single row (y = 0) in output-list order, each region

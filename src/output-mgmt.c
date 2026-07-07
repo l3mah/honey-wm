@@ -248,7 +248,7 @@ bool w3ld_output_command (
 
 void w3ld_output_manager_setup (struct w3ld_server *server) {
 	server->output_manager = wlr_output_manager_v1_create(server->display);
-	w3ld_xdg_output_setup(server);
+	w3ld_xdg_output_setup(server); /* xwayland-scale (removable): stock = wlr_xdg_output_manager_v1_create */
 
 	server->output_manager_apply.notify = output_manager_apply;
 	wl_signal_add(&server->output_manager->events.apply,

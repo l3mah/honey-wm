@@ -50,8 +50,9 @@ void w3ld_window_configure (
 	wlr_scene_node_set_position(&window->surface_tree->node, x, y);
 	wlr_scene_rect_set_size(window->dim, width, height);
 	if (window->type == W3LD_WINDOW_X11) {
-		/* X11 lives in the scaled xwayland coordinate space: the window
-		 * renders at its output's physical pixels, displayed at logical size. */
+		/* xwayland-scale (removable): X11 lives in the scaled xwayland
+		 * coordinate space — renders at its output's physical pixels, shown at
+		 * logical size. Remove -> plain wlr_xwayland_surface_configure. */
 		struct w3ld_server *server = window->server;
 		int xw_x, xw_y;
 		w3ld_to_xwayland(server, x, y, &xw_x, &xw_y);
@@ -453,8 +454,9 @@ void w3ld_window_handle_map (struct w3ld_window *window) {
 		window->floating = true;
 		int width, height;
 		if (window->type == W3LD_WINDOW_X11) {
-			/* X11 reports its size in the scaled coordinate space; float_geom
-			 * is logical, and configure re-applies the scale — divide it back
+			/* xwayland-scale (removable): X11 reports its size in the scaled
+			 * coordinate space; float_geom is logical and configure re-applies
+			 * the scale — divide it back
 			 * or the window is configured scale-times too big (splash paints
 			 * its real size in the corner of a black, oversized buffer). */
 			double scale =

@@ -11,6 +11,36 @@
  *
  * The global is advertised at version 2: version 3 deprecates xdg_output.done
  * in favour of wl_output.done, which wlroots owns and this module cannot send.
+ *
+ * ===========================================================================
+ * XWAYLAND-SCALE FEATURE — anchor module (runtime-gated: `xwayland-scale off`
+ * makes it dormant; every scaling site is tagged `xwayland-scale (removable)`).
+ *
+ * This feature (crisp X11 apps on HiDPI, Hyprland force_zero_scaling parity)
+ * touches ONLY XWayland — regular Wayland clients are never affected. To excise
+ * it entirely (reverting to sway/dwl behaviour: X11 apps upscaled/blurry):
+ *   1. Delete this file (src/xdg-output.c).
+ *   2. output-mgmt.c: replace `w3ld_xdg_output_setup(server)` with
+ *      `wlr_xdg_output_manager_v1_create(server->display, server->output_layout)`;
+ *      drop the two `w3ld_xdg_output_update(server)` calls.
+ *   3. xwayland.c: delete the "scaling" section (w3ld_output_xwayland_scale,
+ *      output_xwayland_size, w3ld_output_xwayland_geometry, output_for_point,
+ *      w3ld_xwayland_scale_at, w3ld_to_xwayland, w3ld_from_xwayland,
+ *      buffer_scale_x11, descale_surface_tree); drop the descale_surface_tree
+ *      calls in x11_commit/unmanaged_commit; in unmanaged_position and
+ *      handle_request_configure use xsurface->x/y and event geometry directly.
+ *   4. window.c: w3ld_window_configure X11 branch -> plain
+ *      wlr_xwayland_surface_configure(surface, x, y, width, height); the X11
+ *      float-size branch in handle_map -> use xwayland_surface->width/height.
+ *   5. seat.c: delete the X11 pointer-scale block (the try_from_wlr_surface one).
+ *   6. action.c: float_seed X11 branch -> use xwayland_surface->width/height.
+ *   7. config.c: delete the `xwayland-scale` key (set + get).
+ *   8. w3ld.h: drop config.xwayland_scale/xwayland_scale_auto, the
+ *      xdg_output_resources list, and the w3ld_*_xwayland_* / w3ld_xdg_output_*
+ *      declarations.
+ *   9. Makefile: drop xdg-output-unstable-v1 from PROTOCOLS + IMPL_PROTOCOLS;
+ *      remove protocol/xdg-output-unstable-v1.xml.
+ * ===========================================================================
  */
 #include <stdlib.h>
 
