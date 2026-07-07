@@ -408,6 +408,38 @@ void w3ld_window_finish_setup (struct w3ld_window *window) {
 	wlr_scene_node_set_enabled(&window->dim->node, false);
 }
 
+/* Dialogs, utilities, menus, tooltips, transients, modals, and fixed-size
+ * windows float rather than tile — the Hyprland shouldBeFloated policy, for
+ * both XDG (parent set, or fixed min==max size) and X11 (window-type atoms,
+ * transient/modal/parent, or fixed size). */
+static bool window_wants_floating (struct w3ld_window *window) {
+	if (window->type == W3LD_WINDOW_X11) {
+		struct wlr_xwayland_surface *xsurface = window->xwayland_surface;
+		static const enum wlr_xwayland_net_wm_window_type float_types[] = {
+			WLR_XWAYLAND_NET_WM_WINDOW_TYPE_DIALOG,
+			WLR_XWAYLAND_NET_WM_WINDOW_TYPE_SPLASH,
+			WLR_XWAYLAND_NET_WM_WINDOW_TYPE_TOOLBAR,
+			WLR_XWAYLAND_NET_WM_WINDOW_TYPE_UTILITY,
+			WLR_XWAYLAND_NET_WM_WINDOW_TYPE_TOOLTIP,
+			WLR_XWAYLAND_NET_WM_WINDOW_TYPE_POPUP_MENU,
+			WLR_XWAYLAND_NET_WM_WINDOW_TYPE_DROPDOWN_MENU,
+			WLR_XWAYLAND_NET_WM_WINDOW_TYPE_MENU,
+		};
+		for (size_t i = 0; i < sizeof float_types / sizeof float_types[0]; i++)
+			if (wlr_xwayland_surface_has_window_type(xsurface, float_types[i]))
+				return true;
+		if (xsurface->modal || xsurface->parent)
+			return true;
+		xcb_size_hints_t *hints = xsurface->size_hints;
+		if (hints && hints->min_width > 0 && hints->min_height > 0
+				&& hints->min_width == hints->max_width
+				&& hints->min_height == hints->max_height)
+			return true;
+		return false;
+	}
+	return window->xdg_toplevel->parent != NULL;
+}
+
 void w3ld_window_handle_map (struct w3ld_window *window) {
 	struct w3ld_server *server = window->server;
 
@@ -416,14 +448,22 @@ void w3ld_window_handle_map (struct w3ld_window *window) {
 	free(window->initial_title);
 	window->initial_title = strdup(w3ld_window_title(window));
 
-	/* Dialogs (a toplevel with a parent) float centred rather than tiling. */
-	if (window->type == W3LD_WINDOW_XDG && window->xdg_toplevel->parent) {
+	/* Dialog-class windows float centred at their own size rather than tiling. */
+	if (window_wants_floating(window)) {
 		window->floating = true;
-		struct wlr_box *geometry = &window->xdg_toplevel->base->geometry;
-		int width = geometry->width > 0 ? geometry->width
-			: (int)(server->focused_output->usable.width * 0.4);
-		int height = geometry->height > 0 ? geometry->height
-			: (int)(server->focused_output->usable.height * 0.4);
+		int width, height;
+		if (window->type == W3LD_WINDOW_X11) {
+			width = window->xwayland_surface->width;
+			height = window->xwayland_surface->height;
+		} else {
+			struct wlr_box *geometry = &window->xdg_toplevel->base->geometry;
+			width = geometry->width;
+			height = geometry->height;
+		}
+		if (width <= 0)
+			width = (int)(server->focused_output->usable.width * 0.4);
+		if (height <= 0)
+			height = (int)(server->focused_output->usable.height * 0.4);
 		w3ld_window_set_float_geom(window, width, height);
 		w3ld_window_update_layer(window);
 	}
