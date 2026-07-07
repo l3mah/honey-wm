@@ -669,7 +669,34 @@ bool w3ld_input_rule_add (
 	const char *value
 );
 
-double w3ld_xwayland_effective_scale (struct w3ld_server *server);
+/* X11 coordinate space: each output occupies a region anchored at its logical
+ * position times the anchor scale, sized by its own render scale. */
+double w3ld_output_xwayland_scale (struct w3ld_output *output);
+double w3ld_xwayland_anchor_scale (struct w3ld_server *server);
+void w3ld_output_xwayland_geometry (
+	struct w3ld_output *output,
+	struct wlr_box *box
+);
+void w3ld_to_xwayland (
+	struct w3ld_server *server,
+	double lx,
+	double ly,
+	int *x,
+	int *y
+);
+void w3ld_from_xwayland (
+	struct w3ld_server *server,
+	int x,
+	int y,
+	double *lx,
+	double *ly
+);
+/* the render scale that applies at a layout point (its output's scale) */
+double w3ld_xwayland_scale_at (
+	struct w3ld_server *server,
+	double lx,
+	double ly
+);
 
 /* xdg-output (in-tree: the Xwayland client sees scaled geometry) */
 void w3ld_xdg_output_setup (struct w3ld_server *server);

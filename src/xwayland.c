@@ -33,22 +33,124 @@ struct w3ld_xwayland_surface {
 
 /* ------------------------------------------------------------------- scaling */
 
-/* The X11 render scale: X11 windows are configured at logical * scale physical
- * pixels and their buffers displayed at logical size — 1:1 (crisp) on outputs
- * of exactly this scale, resampled elsewhere. X11 has a single coordinate
- * space, so one scale serves all monitors. */
-double w3ld_xwayland_effective_scale (struct w3ld_server *server) {
-	if (server->config.xwayland_scale_auto) {
-		double best = 1.0;
-		struct w3ld_output *output;
-		wl_list_for_each(output, &server->outputs, link) {
-			if (output->wlr_output->scale > best)
-				best = output->wlr_output->scale;
-		}
-		return best;
+/* The X11 coordinate space (the Hyprland technique, per monitor): every output
+ * occupies a region anchored at its logical position times the ANCHOR scale
+ * (the highest render scale in play — regions can never overlap since each is
+ * at most anchor * logical wide), sized by its OWN render scale. X11 windows
+ * are configured inside their output's region at that output's scale and their
+ * buffers displayed back at logical size: 1:1 crisp everywhere, per monitor. */
+
+/* The render scale of one output: off = 1, a number = that everywhere,
+ * auto = the output's own scale. */
+double w3ld_output_xwayland_scale (struct w3ld_output *output) {
+	struct w3ld_config *config = &output->server->config;
+	if (config->xwayland_scale_auto)
+		return output->wlr_output->scale;
+	return config->xwayland_scale > 0 ? config->xwayland_scale : 1.0;
+}
+
+double w3ld_xwayland_anchor_scale (struct w3ld_server *server) {
+	double anchor = 1.0;
+	struct w3ld_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		double scale = w3ld_output_xwayland_scale(output);
+		if (scale > anchor)
+			anchor = scale;
 	}
-	return server->config.xwayland_scale > 0
-		? server->config.xwayland_scale : 1.0;
+	return anchor;
+}
+
+/* An output's region in the X11 coordinate space. The size is the exact
+ * physical resolution when the render scale is the output's own (auto). */
+void w3ld_output_xwayland_geometry (
+	struct w3ld_output *output,
+	struct wlr_box *box
+) {
+	struct w3ld_server *server = output->server;
+	double anchor = w3ld_xwayland_anchor_scale(server);
+	double scale = w3ld_output_xwayland_scale(output);
+
+	struct wlr_box logical;
+	wlr_output_layout_get_box(server->output_layout, output->wlr_output,
+			&logical);
+	box->x = (int)round(logical.x * anchor);
+	box->y = (int)round(logical.y * anchor);
+	if (scale == output->wlr_output->scale) {
+		wlr_output_transformed_resolution(output->wlr_output, &box->width,
+				&box->height);
+	} else {
+		box->width = (int)round(logical.width * scale);
+		box->height = (int)round(logical.height * scale);
+	}
+}
+
+/* The output containing a layout point, or the focused one. */
+static struct w3ld_output *output_for_point (
+	struct w3ld_server *server,
+	double lx,
+	double ly
+) {
+	struct w3ld_output *output = w3ld_output_at(server, lx, ly);
+	return output ? output : server->focused_output;
+}
+
+double w3ld_xwayland_scale_at (
+	struct w3ld_server *server,
+	double lx,
+	double ly
+) {
+	struct w3ld_output *output = output_for_point(server, lx, ly);
+	return output ? w3ld_output_xwayland_scale(output) : 1.0;
+}
+
+void w3ld_to_xwayland (
+	struct w3ld_server *server,
+	double lx,
+	double ly,
+	int *x,
+	int *y
+) {
+	struct w3ld_output *output = output_for_point(server, lx, ly);
+	if (!output) {
+		*x = (int)round(lx);
+		*y = (int)round(ly);
+		return;
+	}
+	struct wlr_box region;
+	w3ld_output_xwayland_geometry(output, &region);
+	struct wlr_box logical;
+	wlr_output_layout_get_box(server->output_layout, output->wlr_output,
+			&logical);
+	double scale = w3ld_output_xwayland_scale(output);
+	*x = region.x + (int)round((lx - logical.x) * scale);
+	*y = region.y + (int)round((ly - logical.y) * scale);
+}
+
+void w3ld_from_xwayland (
+	struct w3ld_server *server,
+	int x,
+	int y,
+	double *lx,
+	double *ly
+) {
+	struct w3ld_output *output;
+	wl_list_for_each(output, &server->outputs, link) {
+		struct wlr_box region;
+		w3ld_output_xwayland_geometry(output, &region);
+		if (x < region.x || x >= region.x + region.width
+				|| y < region.y || y >= region.y + region.height)
+			continue;
+		struct wlr_box logical;
+		wlr_output_layout_get_box(server->output_layout, output->wlr_output,
+				&logical);
+		double scale = w3ld_output_xwayland_scale(output);
+		*lx = logical.x + (x - region.x) / scale;
+		*ly = logical.y + (y - region.y) / scale;
+		return;
+	}
+	double anchor = w3ld_xwayland_anchor_scale(server);
+	*lx = x / anchor;
+	*ly = y / anchor;
 }
 
 static void buffer_scale_x11 (
@@ -78,21 +180,21 @@ static void buffer_scale_x11 (
 /* Runs after the scene's own commit handler (registered earlier), so these
  * per-buffer overrides win each commit. */
 static void descale_surface_tree (
-	struct w3ld_server *server,
-	struct wlr_scene_tree *tree
+	struct wlr_scene_tree *tree,
+	double scale
 ) {
-	double scale = w3ld_xwayland_effective_scale(server);
 	wlr_scene_node_for_each_buffer(&tree->node, buffer_scale_x11, &scale);
 }
 
 /* ---------------------------------------------------------------- unmanaged */
 
-/* Override-redirect coordinates are in X11's (scaled) space. */
+/* Override-redirect coordinates are in the X11 coordinate space. */
 static void unmanaged_position (struct w3ld_xwayland_surface *xw) {
-	double scale = w3ld_xwayland_effective_scale(xw->server);
+	double lx, ly;
+	w3ld_from_xwayland(xw->server, xw->xwayland_surface->x,
+			xw->xwayland_surface->y, &lx, &ly);
 	wlr_scene_node_set_position(&xw->unmanaged_tree->node,
-			(int)round(xw->xwayland_surface->x / scale),
-			(int)round(xw->xwayland_surface->y / scale));
+			(int)round(lx), (int)round(ly));
 }
 
 static void unmanaged_commit (
@@ -101,7 +203,9 @@ static void unmanaged_commit (
 ) {
 	struct w3ld_xwayland_surface *xw =
 		wl_container_of(listener, xw, unmanaged_commit);
-	descale_surface_tree(xw->server, xw->unmanaged_tree);
+	descale_surface_tree(xw->unmanaged_tree,
+			w3ld_xwayland_scale_at(xw->server, xw->unmanaged_tree->node.x,
+				xw->unmanaged_tree->node.y));
 }
 
 static void handle_set_geometry (
@@ -166,7 +270,10 @@ static void x11_commit (
 	void *data
 ) {
 	struct w3ld_window *window = wl_container_of(listener, window, commit);
-	descale_surface_tree(window->server, window->surface_tree);
+	struct w3ld_output *output = window->workspace
+		? window->workspace->output : window->server->focused_output;
+	descale_surface_tree(window->surface_tree,
+			output ? w3ld_output_xwayland_scale(output) : 1.0);
 }
 
 static void x11_request_fullscreen (
@@ -286,9 +393,11 @@ static void handle_request_configure (
 	}
 
 	if (window->floating) {
-		double scale = w3ld_xwayland_effective_scale(xw->server);
-		window->float_geom.x = (int)round(event->x / scale);
-		window->float_geom.y = (int)round(event->y / scale);
+		double lx, ly;
+		w3ld_from_xwayland(xw->server, event->x, event->y, &lx, &ly);
+		double scale = w3ld_xwayland_scale_at(xw->server, lx, ly);
+		window->float_geom.x = (int)round(lx);
+		window->float_geom.y = (int)round(ly);
 		window->float_geom.width = (int)round(event->width / scale);
 		window->float_geom.height = (int)round(event->height / scale);
 	}

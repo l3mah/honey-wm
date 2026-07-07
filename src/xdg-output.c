@@ -47,12 +47,10 @@ static void send_geometry (
 	if (wlr_box_empty(&box))
 		return; /* not in the layout */
 
-	double scale = for_xwayland(server, resource)
-		? w3ld_xwayland_effective_scale(server) : 1.0;
-	zxdg_output_v1_send_logical_position(resource,
-			(int)(box.x * scale), (int)(box.y * scale));
-	zxdg_output_v1_send_logical_size(resource,
-			(int)(box.width * scale), (int)(box.height * scale));
+	if (for_xwayland(server, resource) && wlr_output->data)
+		w3ld_output_xwayland_geometry(wlr_output->data, &box);
+	zxdg_output_v1_send_logical_position(resource, box.x, box.y);
+	zxdg_output_v1_send_logical_size(resource, box.width, box.height);
 	zxdg_output_v1_send_done(resource);
 }
 

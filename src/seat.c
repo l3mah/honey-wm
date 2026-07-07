@@ -358,7 +358,8 @@ static void pointer_focus (
 		/* X11 surfaces live in the scaled xwayland coordinate space; the
 		 * scene reports logical coords, Xwayland expects its own. */
 		if (wlr_xwayland_surface_try_from_wlr_surface(surface)) {
-			double scale = w3ld_xwayland_effective_scale(server);
+			double scale = w3ld_xwayland_scale_at(server, server->cursor->x,
+					server->cursor->y);
 			sx *= scale;
 			sy *= scale;
 		}

@@ -50,11 +50,13 @@ void w3ld_window_configure (
 	wlr_scene_node_set_position(&window->surface_tree->node, x, y);
 	wlr_scene_rect_set_size(window->dim, width, height);
 	if (window->type == W3LD_WINDOW_X11) {
-		/* X11 lives in a scaled coordinate space (xwayland-scale): the window
-		 * renders at physical pixels and is displayed at logical size. */
-		double scale = w3ld_xwayland_effective_scale(window->server);
-		wlr_xwayland_surface_configure(window->xwayland_surface,
-				(int)round(x * scale), (int)round(y * scale),
+		/* X11 lives in the scaled xwayland coordinate space: the window
+		 * renders at its output's physical pixels, displayed at logical size. */
+		struct w3ld_server *server = window->server;
+		int xw_x, xw_y;
+		w3ld_to_xwayland(server, x, y, &xw_x, &xw_y);
+		double scale = w3ld_xwayland_scale_at(server, x, y);
+		wlr_xwayland_surface_configure(window->xwayland_surface, xw_x, xw_y,
 				(int)round(width * scale), (int)round(height * scale));
 	} else {
 		wlr_xdg_toplevel_set_size(window->xdg_toplevel, width, height);
