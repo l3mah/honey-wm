@@ -33,12 +33,13 @@ struct w3ld_xwayland_surface {
 
 /* ------------------------------------------------------------------- scaling */
 
-/* The X11 coordinate space (the Hyprland technique, per monitor): every output
- * occupies a region anchored at its logical position times the ANCHOR scale
- * (the highest render scale in play — regions can never overlap since each is
- * at most anchor * logical wide), sized by its OWN render scale. X11 windows
- * are configured inside their output's region at that output's scale and their
- * buffers displayed back at logical size: 1:1 crisp everywhere, per monitor. */
+/* The X11 coordinate space (the Hyprland technique, per monitor): outputs are
+ * packed contiguously in a single row (y = 0) in output-list order, each region
+ * sized by its OWN render scale — the exact physical resolution under auto. X11
+ * windows are configured inside their output's region at that output's scale
+ * and their buffers displayed back at logical size: 1:1 crisp per monitor.
+ * Contiguous packing leaves no gaps, so the X screen exactly covers the windows
+ * (MonitorPositionController.cpp:103). */
 
 /* The render scale of one output: off = 1, a number = that everywhere,
  * auto = the output's own scale. */
@@ -49,39 +50,42 @@ double w3ld_output_xwayland_scale (struct w3ld_output *output) {
 	return config->xwayland_scale > 0 ? config->xwayland_scale : 1.0;
 }
 
-double w3ld_xwayland_anchor_scale (struct w3ld_server *server) {
-	double anchor = 1.0;
-	struct w3ld_output *output;
-	wl_list_for_each(output, &server->outputs, link) {
-		double scale = w3ld_output_xwayland_scale(output);
-		if (scale > anchor)
-			anchor = scale;
+/* An output's X11-space region size (physical resolution under auto). */
+static void output_xwayland_size (
+	struct w3ld_output *output,
+	int *width,
+	int *height
+) {
+	double scale = w3ld_output_xwayland_scale(output);
+	if (scale == output->wlr_output->scale) {
+		wlr_output_transformed_resolution(output->wlr_output, width, height);
+	} else {
+		struct wlr_box logical;
+		wlr_output_layout_get_box(output->server->output_layout,
+				output->wlr_output, &logical);
+		*width = (int)round(logical.width * scale);
+		*height = (int)round(logical.height * scale);
 	}
-	return anchor;
 }
 
-/* An output's region in the X11 coordinate space. The size is the exact
- * physical resolution when the render scale is the output's own (auto). */
+/* An output's region, packed contiguously left-to-right in output-list order. */
 void w3ld_output_xwayland_geometry (
 	struct w3ld_output *output,
 	struct wlr_box *box
 ) {
-	struct w3ld_server *server = output->server;
-	double anchor = w3ld_xwayland_anchor_scale(server);
-	double scale = w3ld_output_xwayland_scale(output);
-
-	struct wlr_box logical;
-	wlr_output_layout_get_box(server->output_layout, output->wlr_output,
-			&logical);
-	box->x = (int)round(logical.x * anchor);
-	box->y = (int)round(logical.y * anchor);
-	if (scale == output->wlr_output->scale) {
-		wlr_output_transformed_resolution(output->wlr_output, &box->width,
-				&box->height);
-	} else {
-		box->width = (int)round(logical.width * scale);
-		box->height = (int)round(logical.height * scale);
+	int offset = 0;
+	struct w3ld_output *other;
+	wl_list_for_each(other, &output->server->outputs, link) {
+		int width, height;
+		output_xwayland_size(other, &width, &height);
+		if (other == output) {
+			*box = (struct wlr_box){ .x = offset, .y = 0, .width = width,
+				.height = height };
+			return;
+		}
+		offset += width;
 	}
+	*box = (struct wlr_box){0};
 }
 
 /* The output containing a layout point, or the focused one. */
@@ -148,9 +152,8 @@ void w3ld_from_xwayland (
 		*ly = logical.y + (y - region.y) / scale;
 		return;
 	}
-	double anchor = w3ld_xwayland_anchor_scale(server);
-	*lx = x / anchor;
-	*ly = y / anchor;
+	*lx = x;
+	*ly = y;
 }
 
 static void buffer_scale_x11 (

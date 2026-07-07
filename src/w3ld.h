@@ -672,7 +672,6 @@ bool w3ld_input_rule_add (
 /* X11 coordinate space: each output occupies a region anchored at its logical
  * position times the anchor scale, sized by its own render scale. */
 double w3ld_output_xwayland_scale (struct w3ld_output *output);
-double w3ld_xwayland_anchor_scale (struct w3ld_server *server);
 void w3ld_output_xwayland_geometry (
 	struct w3ld_output *output,
 	struct wlr_box *box
