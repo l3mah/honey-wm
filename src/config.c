@@ -148,6 +148,7 @@ bool w3ld_config_set (
 			config->xwayland_scale = scale;
 			config->xwayland_scale_auto = false;
 		}
+		w3ld_xdg_output_update(server);
 	} else if (!strcmp(key, "cursor-theme") || !strcmp(key, "cursor-size")) {
 		if (!strcmp(key, "cursor-theme")) {
 			free(server->cursor_theme);

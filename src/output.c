@@ -96,6 +96,7 @@ static void output_destroy (
 		wlr_ext_workspace_group_handle_v1_destroy(output->ext_group);
 	if (output->gamma_transform)
 		wlr_color_transform_unref(output->gamma_transform);
+	w3ld_xdg_output_output_destroyed(server, output->wlr_output);
 	free(output->status_workspaces);
 	free(output->status_window);
 

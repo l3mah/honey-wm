@@ -20,6 +20,7 @@
 /* Refresh each output's usable box (full box minus layer-shell exclusive zones)
  * and re-tile. */
 static void refresh_layout (struct w3ld_server *server) {
+	w3ld_xdg_output_update(server);
 	struct w3ld_output *output;
 	wl_list_for_each(output, &server->outputs, link)
 		w3ld_layer_arrange(output);
@@ -247,7 +248,7 @@ bool w3ld_output_command (
 
 void w3ld_output_manager_setup (struct w3ld_server *server) {
 	server->output_manager = wlr_output_manager_v1_create(server->display);
-	wlr_xdg_output_manager_v1_create(server->display, server->output_layout);
+	w3ld_xdg_output_setup(server);
 
 	server->output_manager_apply.notify = output_manager_apply;
 	wl_signal_add(&server->output_manager->events.apply,

@@ -27,16 +27,27 @@ LDLIBS    = $(PKG_LIBS)
 
 # Server-side headers for protocols wlroots implements but doesn't ship
 # generated (its headers #include these by name).
-PROTOCOLS = wlr-layer-shell-unstable-v1
+PROTOCOLS = wlr-layer-shell-unstable-v1 xdg-output-unstable-v1
 PROTO_HDRS = $(PROTOCOLS:%=build/%-protocol.h)
 
+# Protocols w3ld implements itself also need the interface code (the symbols
+# are private inside wlroots).
+IMPL_PROTOCOLS = xdg-output-unstable-v1
+IMPL_OBJS = $(IMPL_PROTOCOLS:%=build/%-protocol.o)
+
 SRCS = $(wildcard src/*.c)
-OBJS = $(SRCS:src/%.c=build/%.o)
+OBJS = $(SRCS:src/%.c=build/%.o) $(IMPL_OBJS)
 
 all: w3ld w3ldctl
 
 build/%-protocol.h: protocol/%.xml | build
 	$(SCANNER) server-header $< $@
+
+build/%-protocol.c: protocol/%.xml | build
+	$(SCANNER) private-code $< $@
+
+build/%-protocol.o: build/%-protocol.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # Generated protocol headers must exist before any object is compiled.
 $(OBJS): | $(PROTO_HDRS)

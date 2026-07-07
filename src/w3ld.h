@@ -170,6 +170,7 @@ struct w3ld_server {
 	struct wl_event_source *ipc_source;
 	char ipc_path[108]; /* sun_path max */
 	struct wl_list ipc_clients; /* w3ld_ipc_client.link */
+	struct wl_list xdg_output_resources; /* per-client xdg-output resources */
 
 	struct wlr_seat *seat;
 	struct wlr_cursor *cursor;
@@ -669,6 +670,14 @@ bool w3ld_input_rule_add (
 );
 
 double w3ld_xwayland_effective_scale (struct w3ld_server *server);
+
+/* xdg-output (in-tree: the Xwayland client sees scaled geometry) */
+void w3ld_xdg_output_setup (struct w3ld_server *server);
+void w3ld_xdg_output_update (struct w3ld_server *server);
+void w3ld_xdg_output_output_destroyed (
+	struct w3ld_server *server,
+	struct wlr_output *wlr_output
+);
 
 void w3ld_decoration_setup (struct w3ld_server *server);
 void w3ld_xwayland_setup (struct w3ld_server *server);
