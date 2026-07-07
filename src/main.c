@@ -152,6 +152,11 @@ int main (
 	}
 
 	setenv("WAYLAND_DISPLAY", socket, true);
+	/* Declare the session so toolkits and portals identify it (only if a
+	 * session manager hasn't already — hence overwrite = 0). */
+	setenv("XDG_CURRENT_DESKTOP", "w3ld", 0);
+	setenv("XDG_SESSION_DESKTOP", "w3ld", 0);
+	setenv("XDG_SESSION_TYPE", "wayland", 0);
 	LOG("running on WAYLAND_DISPLAY=%s", socket);
 
 	w3ld_ipc_setup(&server);
