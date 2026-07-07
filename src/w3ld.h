@@ -162,6 +162,8 @@ struct w3ld_server {
 	struct w3ld_config config;
 	double gamma_temperature; /* night-light target; 0 = neutral/off */
 	double gamma_brightness;
+	double gamma_brightness_min; /* clamp floor for brightness ops (0-1) */
+	double gamma_brightness_max; /* clamp ceiling for brightness ops (0-1) */
 
 	struct wl_list keybinds; /* w3ld_keybind.link */
 	struct wl_list rules;    /* w3ld_rule.link */
@@ -635,6 +637,7 @@ void w3ld_switch_workspace (
 
 /* status stream */
 void w3ld_status_broadcast (struct w3ld_server *server);
+void w3ld_status_broadcast_gamma (struct w3ld_server *server);
 void w3ld_status_snapshot (
 	struct w3ld_server *server,
 	struct w3ld_ipc_client *client

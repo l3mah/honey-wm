@@ -424,19 +424,98 @@ static void dispatch (
 		char *arg = line + 5;
 		while (*arg == ' ')
 			arg++;
-		if (!*arg || !strcmp(arg, "off") || !strcmp(arg, "reset")) {
+
+		/* No argument: report current state (Kelvin, brightness percent). */
+		if (!*arg) {
+			snprintf(reply, reply_size, "temperature %d brightness %d",
+					(int)(server->gamma_temperature + 0.5),
+					(int)(server->gamma_brightness * 100.0 + 0.5));
+			return;
+		}
+		if (!strcmp(arg, "off") || !strcmp(arg, "reset")) {
 			w3ld_gamma_set(server, 0, 1.0);
 			snprintf(reply, reply_size, "ok");
 			return;
 		}
-		double temperature = 0, brightness = 1.0;
+
+		double min = server->gamma_brightness_min;
+		double max = server->gamma_brightness_max;
+
+		/* gamma min|max <percent>: the universal brightness clamp; both bar
+		 * scroll and hotkeys route through the brightness ops below, so this
+		 * floor/ceiling applies to every source. */
+		if (!strncmp(arg, "min ", 4)) {
+			double value = atof(arg + 4) / 100.0;
+			server->gamma_brightness_min = value < 0.0 ? 0.0
+					: value > 1.0 ? 1.0 : value;
+			snprintf(reply, reply_size, "ok");
+			return;
+		}
+		if (!strncmp(arg, "max ", 4)) {
+			double value = atof(arg + 4) / 100.0;
+			server->gamma_brightness_max = value < 0.0 ? 0.0
+					: value > 1.0 ? 1.0 : value;
+			snprintf(reply, reply_size, "ok");
+			return;
+		}
+
+		/* gamma brightness <+N|-N|N>: brightness only (percent), temp kept. */
+		if (!strncmp(arg, "brightness", 10)
+				&& (arg[10] == ' ' || arg[10] == '\0')) {
+			char *val = arg + 10;
+			while (*val == ' ')
+				val++;
+			if (!*val) {
+				snprintf(reply, reply_size,
+						"error: usage: gamma brightness <+N|-N|N>");
+				return;
+			}
+			double current = server->gamma_brightness * 100.0;
+			double percent = (*val == '+' || *val == '-')
+					? current + atof(val) : atof(val);
+			double value = percent / 100.0;
+			value = value < min ? min : value > max ? max : value;
+			w3ld_gamma_set(server, server->gamma_temperature, value);
+			snprintf(reply, reply_size, "ok");
+			return;
+		}
+
+		/* gamma temperature <+N|-N|N>: temperature only (Kelvin), brightness
+		 * kept. Relative from off uses 6500K (neutral) as the baseline. */
+		if (!strncmp(arg, "temperature", 11)
+				&& (arg[11] == ' ' || arg[11] == '\0')) {
+			char *val = arg + 11;
+			while (*val == ' ')
+				val++;
+			if (!*val) {
+				snprintf(reply, reply_size,
+						"error: usage: gamma temperature <+N|-N|N>");
+				return;
+			}
+			double baseline = server->gamma_temperature > 0
+					? server->gamma_temperature : 6500;
+			double temperature = (*val == '+' || *val == '-')
+					? baseline + atof(val) : atof(val);
+			temperature = temperature < 1000 ? 1000
+					: temperature > 10000 ? 10000 : temperature;
+			w3ld_gamma_set(server, temperature, server->gamma_brightness);
+			snprintf(reply, reply_size, "ok");
+			return;
+		}
+
+		/* gamma <temp> [brightness%]: absolute; brightness is percent (5-100). */
+		double temperature = 0, brightness = 100.0;
 		int fields = sscanf(arg, "%lf %lf", &temperature, &brightness);
 		if (fields < 1 || temperature < 1000 || temperature > 10000) {
 			snprintf(reply, reply_size,
-					"error: usage: gamma <1000-10000> [brightness] | off");
+					"error: usage: gamma <1000-10000> [brightness%%] | "
+					"brightness <+N|-N|N> | temperature <+N|-N|N> | "
+					"min <N> | max <N> | off");
 			return;
 		}
-		w3ld_gamma_set(server, temperature, brightness);
+		double value = brightness / 100.0;
+		value = value < min ? min : value > max ? max : value;
+		w3ld_gamma_set(server, temperature, value);
 		snprintf(reply, reply_size, "ok");
 		return;
 	}

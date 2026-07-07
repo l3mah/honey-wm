@@ -100,10 +100,16 @@ void w3ld_gamma_set (
 	struct w3ld_output *output;
 	wl_list_for_each(output, &server->outputs, link)
 		w3ld_gamma_update_output(output);
+
+	/* One source of truth: any gamma change (scroll, hotkey, direct command)
+	 * flows through here, so subscribers stay in sync however it was driven. */
+	w3ld_status_broadcast_gamma(server);
 }
 
 void w3ld_gamma_setup (struct w3ld_server *server) {
 	server->gamma_brightness = 1.0;
+	server->gamma_brightness_min = 0.05;
+	server->gamma_brightness_max = 1.0;
 	struct wlr_gamma_control_manager_v1 *manager =
 		wlr_gamma_control_manager_v1_create(server->display);
 	wlr_scene_set_gamma_control_manager_v1(server->scene, manager);

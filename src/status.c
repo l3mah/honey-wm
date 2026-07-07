@@ -5,6 +5,10 @@
  * that output's slice changes. Lines are diffed against the last sent so nothing
  * is emitted for unchanged state. Extra v1 keys (layout, count, names) are
  * additive — consumers ignore what they don't use.
+ *
+ * A global `gamma` event (temperature Kelvin, brightness percent) is sent on
+ * connect and whenever gamma changes by any route, so a bar reflects the live
+ * state however it was driven (scroll, hotkey, direct `w3ldctl gamma`).
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -113,6 +117,19 @@ static void format_window (
 			escaped_app, escaped_title);
 }
 
+/* Gamma is global (not per-output): one line reporting the current temperature
+ * (Kelvin, 0 = off) and brightness (percent, matching the command interface). */
+static void format_gamma (
+	struct w3ld_server *server,
+	char *buffer,
+	size_t cap
+) {
+	snprintf(buffer, cap,
+			"{\"ev\":\"gamma\",\"v\":1,\"temperature\":%d,\"brightness\":%d}\n",
+			(int)(server->gamma_temperature + 0.5),
+			(int)(server->gamma_brightness * 100.0 + 0.5));
+}
+
 /* -------------------------------------------------------------- broadcasting */
 
 static void send_line (
@@ -172,6 +189,14 @@ void w3ld_status_broadcast (struct w3ld_server *server) {
 	}
 }
 
+void w3ld_status_broadcast_gamma (struct w3ld_server *server) {
+	if (!has_subscribers(server))
+		return;
+	char buffer[128];
+	format_gamma(server, buffer, sizeof buffer);
+	send_to_subscribers(server, buffer);
+}
+
 void w3ld_status_snapshot (
 	struct w3ld_server *server,
 	struct w3ld_ipc_client *client
@@ -184,4 +209,8 @@ void w3ld_status_snapshot (
 		format_window(output, buffer, sizeof buffer);
 		send_line(client->fd, buffer);
 	}
+
+	char gamma[128];
+	format_gamma(server, gamma, sizeof gamma);
+	send_line(client->fd, gamma);
 }
