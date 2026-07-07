@@ -269,6 +269,30 @@ static void dispatch (
 		return;
 	}
 
+	if (!strncmp(line, "env ", 4)) {
+		char *rest = line + 4;
+		while (*rest == ' ')
+			rest++;
+		char *space = strchr(rest, ' ');
+		char *value = "";
+		if (space) {
+			*space = '\0';
+			value = space + 1;
+			while (*value == ' ')
+				value++;
+		}
+		if (*rest == '\0') {
+			snprintf(reply, reply_size, "error: usage: env <KEY> <VALUE>");
+			return;
+		}
+		/* Sets w3ld's own environment, so apps it spawns afterward inherit it —
+		 * the compositor toolkit/backend hints belong here (a plain export in
+		 * the init would only reach the init's own shell). */
+		setenv(rest, value, 1);
+		snprintf(reply, reply_size, "ok");
+		return;
+	}
+
 	if (!strncmp(line, "kb-layout ", 10)) {
 		char *save = NULL;
 		char *layout = strtok_r(line + 10, " \t", &save);
