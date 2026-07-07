@@ -453,8 +453,14 @@ void w3ld_window_handle_map (struct w3ld_window *window) {
 		window->floating = true;
 		int width, height;
 		if (window->type == W3LD_WINDOW_X11) {
-			width = window->xwayland_surface->width;
-			height = window->xwayland_surface->height;
+			/* X11 reports its size in the scaled coordinate space; float_geom
+			 * is logical, and configure re-applies the scale — divide it back
+			 * or the window is configured scale-times too big (splash paints
+			 * its real size in the corner of a black, oversized buffer). */
+			double scale =
+				w3ld_output_xwayland_scale(window->workspace->output);
+			width = (int)round(window->xwayland_surface->width / scale);
+			height = (int)round(window->xwayland_surface->height / scale);
 		} else {
 			struct wlr_box *geometry = &window->xdg_toplevel->base->geometry;
 			width = geometry->width;
