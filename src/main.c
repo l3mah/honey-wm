@@ -24,6 +24,10 @@
 
 #include "honey.h"
 
+#ifndef HONEY_VERSION
+#define HONEY_VERSION "unknown"
+#endif
+
 /* ------------------------------------------------------------------- logging */
 
 void honey_log (const char *format, ...) {
@@ -75,6 +79,13 @@ int main (
 	int argc,
 	char *argv[]
 ) {
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "--version")) {
+			printf("honey %s\n", HONEY_VERSION);
+			return 0;
+		}
+	}
+
 	wlr_log_init(WLR_INFO, NULL);
 
 	/* Reap spawned children with a handler, not SIG_IGN: an ignored SIGCHLD

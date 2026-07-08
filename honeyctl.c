@@ -11,6 +11,10 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+#ifndef HONEY_VERSION
+#define HONEY_VERSION "unknown"
+#endif
+
 int main (
 	int argc,
 	char *argv[]
@@ -18,6 +22,10 @@ int main (
 	if (argc < 2) {
 		fprintf(stderr, "usage: honeyctl <command> [args...]\n");
 		return 2;
+	}
+	if (!strcmp(argv[1], "-v") || !strcmp(argv[1], "--version")) {
+		printf("honeyctl %s\n", HONEY_VERSION);
+		return 0;
 	}
 
 	const char *runtime = getenv("XDG_RUNTIME_DIR");

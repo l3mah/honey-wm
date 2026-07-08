@@ -10,6 +10,8 @@
 # xcb + xcbutilwm are needed for the XWayland headers; the Xwayland binary is a
 # runtime dependency (nix `xwayland`), started lazily on the first X11 client.
 
+VERSION   = 0.20.0
+
 CC       ?= cc
 SCANNER  ?= wayland-scanner
 PKGS      = wlroots-0.20 wayland-server xkbcommon pixman-1 libinput libdrm \
@@ -19,6 +21,7 @@ PKG_LIBS   = $(shell pkg-config --libs $(PKGS))
 
 CFLAGS   ?= -g -Og
 CFLAGS   += -std=c11 -D_GNU_SOURCE -DWLR_USE_UNSTABLE \
+            -DHONEY_VERSION=\"$(VERSION)\" \
             -Wall -Wextra -Wpedantic -Wno-unused-parameter \
             -Wno-missing-field-initializers \
             -MMD -MP \
@@ -58,9 +61,10 @@ build/%.o: src/%.c | build
 honey: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
-# honeyctl is a standalone unix-socket client — no wlroots/wayland linkage.
+# honeyctl is a standalone unix-socket client; no wlroots/wayland linkage.
 honeyctl: honeyctl.c
-	$(CC) -std=c11 -D_GNU_SOURCE -Wall -Wextra -o $@ $<
+	$(CC) -std=c11 -D_GNU_SOURCE -DHONEY_VERSION=\"$(VERSION)\" \
+		-Wall -Wextra -o $@ $<
 
 # Header dependencies (-MMD) so editing a header recompiles every affected .o.
 -include $(wildcard build/*.d)
