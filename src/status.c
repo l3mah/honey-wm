@@ -82,12 +82,14 @@ static void format_workspaces (
 		}
 	}
 
+	const struct honey_layout *layout = output->active && output->active->layout
+			? output->active->layout : server->config.layout;
 	snprintf(buffer, cap,
 			"{\"ev\":\"workspaces\",\"v\":1,\"output\":\"%s\",\"active\":%d,"
-			"\"occupied\":[%s],\"focused\":%s,\"layout\":\"master\","
+			"\"occupied\":[%s],\"focused\":%s,\"layout\":\"%s\","
 			"\"count\":%d,\"names\":{%s}}\n",
 			output->wlr_output->name, active, occupied,
-			focused ? "true" : "false", active_count, names);
+			focused ? "true" : "false", layout->name, active_count, names);
 }
 
 static void format_window (
