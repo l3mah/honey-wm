@@ -161,6 +161,7 @@ struct w3ld_server {
 	struct w3ld_window *focused;
 
 	struct w3ld_config config;
+	const char *config_path; /* -c override; NULL = default ~/.config/w3ld/init */
 	double gamma_temperature; /* night-light target; 0 = neutral/off */
 	double gamma_brightness;
 	double gamma_brightness_min; /* clamp floor for brightness ops (0-1) */

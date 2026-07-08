@@ -8,6 +8,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -86,6 +87,13 @@ int main (
 	struct w3ld_server server = {0};
 	signal_server = &server;
 	w3ld_config_defaults(&server.config);
+
+	/* -c <path> overrides the config file; remembered so reload uses it too.
+	 * argv lives for the process, so the pointer is safe to keep. */
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "-c") && i + 1 < argc)
+			server.config_path = argv[++i];
+	}
 	/* Ready before any arrange (which broadcasts) runs during backend start. */
 	wl_list_init(&server.ipc_clients);
 	wl_list_init(&server.rules);

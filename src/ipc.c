@@ -715,12 +715,14 @@ static void load_default_bindings (struct w3ld_server *server) {
 	w3ld_binding_add(server, "super+l", "master-mfact -0.05");
 	w3ld_binding_add(server, "super+shift+Escape", "exit");
 
-	for (int number = 1; number <= 9; number++) {
+	/* Ten workspaces on the number row: 1..9 then 0 for workspace 10. */
+	for (int number = 1; number <= 10; number++) {
 		char combo[32], action[32];
-		snprintf(combo, sizeof combo, "super+%d", number);
+		int key = number % 10;
+		snprintf(combo, sizeof combo, "super+%d", key);
 		snprintf(action, sizeof action, "workspace %d", number);
 		w3ld_binding_add(server, combo, action);
-		snprintf(combo, sizeof combo, "super+shift+%d", number);
+		snprintf(combo, sizeof combo, "super+shift+%d", key);
 		snprintf(action, sizeof action, "move-to-workspace %d", number);
 		w3ld_binding_add(server, combo, action);
 	}
@@ -728,12 +730,17 @@ static void load_default_bindings (struct w3ld_server *server) {
 
 void w3ld_config_run (struct w3ld_server *server) {
 	char path[512] = {0};
-	const char *config_home = getenv("XDG_CONFIG_HOME");
-	const char *home = getenv("HOME");
-	if (config_home && *config_home)
-		snprintf(path, sizeof path, "%s/w3ld/init", config_home);
-	else if (home)
-		snprintf(path, sizeof path, "%s/.config/w3ld/init", home);
+	if (server->config_path && server->config_path[0]) {
+		/* -c override, remembered from boot so reload uses the same file. */
+		snprintf(path, sizeof path, "%s", server->config_path);
+	} else {
+		const char *config_home = getenv("XDG_CONFIG_HOME");
+		const char *home = getenv("HOME");
+		if (config_home && *config_home)
+			snprintf(path, sizeof path, "%s/w3ld/init", config_home);
+		else if (home)
+			snprintf(path, sizeof path, "%s/.config/w3ld/init", home);
+	}
 
 	if (path[0] && access(path, R_OK) == 0) {
 		LOG("running config: %s", path);

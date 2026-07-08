@@ -20,7 +20,9 @@ nix-shell -p wlroots wayland wayland-protocols wayland-scanner libxkbcommon \
 
 ## Components
 
-- `w3ld` — the compositor.
+- `w3ld` — the compositor. `w3ld -c <path>` runs an alternate config file
+  instead of the default `~/.config/w3ld/init`; the path is remembered, so
+  `w3ldctl reload` re-runs the same file.
 - `w3ldctl` — control client (config is `~/.config/w3ld/init`, a shell script of
   `w3ldctl` calls; the same commands reconfigure a running w3ld live).
 - [w3ld-waybar](../w3ld-waybar) — waybar integration (succeeds lakewm-waybar).

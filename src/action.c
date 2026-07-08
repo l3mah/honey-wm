@@ -89,7 +89,10 @@ void w3ld_action_move_to_workspace (
 
 	w3ld_arrange(server);
 	w3ld_focus_output_active(output);
-	w3ld_warp_to_focus(server);
+	/* Sending a window away shifts focus to whatever remains here; don't let
+	 * that yank the cursor unless workspace-switch warping is opted in. */
+	if (server->config.warp_on_workspace_switch)
+		w3ld_warp_to_focus(server);
 }
 
 void w3ld_action_workspace_back (struct w3ld_server *server) {
