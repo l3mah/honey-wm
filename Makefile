@@ -1,4 +1,4 @@
-# w3ld — a tiling Wayland compositor on wlroots 0.20.
+# honey — a tiling Wayland compositor on wlroots 0.20.
 #
 # The dev toolchain is not in the profile on this Nix host; build inside an
 # ephemeral shell:
@@ -30,7 +30,7 @@ LDLIBS    = $(PKG_LIBS)
 PROTOCOLS = wlr-layer-shell-unstable-v1 xdg-output-unstable-v1
 PROTO_HDRS = $(PROTOCOLS:%=build/%-protocol.h)
 
-# Protocols w3ld implements itself also need the interface code (the symbols
+# Protocols honey implements itself also need the interface code (the symbols
 # are private inside wlroots).
 IMPL_PROTOCOLS = xdg-output-unstable-v1
 IMPL_OBJS = $(IMPL_PROTOCOLS:%=build/%-protocol.o)
@@ -38,7 +38,7 @@ IMPL_OBJS = $(IMPL_PROTOCOLS:%=build/%-protocol.o)
 SRCS = $(wildcard src/*.c)
 OBJS = $(SRCS:src/%.c=build/%.o) $(IMPL_OBJS)
 
-all: w3ld w3ldctl
+all: honey honeyctl
 
 build/%-protocol.h: protocol/%.xml | build
 	$(SCANNER) server-header $< $@
@@ -55,11 +55,11 @@ $(OBJS): | $(PROTO_HDRS)
 build/%.o: src/%.c | build
 	$(CC) $(CFLAGS) -c $< -o $@
 
-w3ld: $(OBJS)
+honey: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDLIBS)
 
-# w3ldctl is a standalone unix-socket client — no wlroots/wayland linkage.
-w3ldctl: w3ldctl.c
+# honeyctl is a standalone unix-socket client — no wlroots/wayland linkage.
+honeyctl: honeyctl.c
 	$(CC) -std=c11 -D_GNU_SOURCE -Wall -Wextra -o $@ $<
 
 # Header dependencies (-MMD) so editing a header recompiles every affected .o.
@@ -70,10 +70,10 @@ build:
 
 PREFIX ?= $(HOME)/.local
 install: all
-	install -Dm755 w3ld    $(DESTDIR)$(PREFIX)/bin/w3ld
-	install -Dm755 w3ldctl $(DESTDIR)$(PREFIX)/bin/w3ldctl
+	install -Dm755 honey    $(DESTDIR)$(PREFIX)/bin/honey
+	install -Dm755 honeyctl $(DESTDIR)$(PREFIX)/bin/honeyctl
 
 clean:
-	rm -rf build w3ld w3ldctl
+	rm -rf build honey honeyctl
 
 .PHONY: all install clean

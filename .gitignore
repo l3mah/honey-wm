@@ -1,6 +1,6 @@
 /build/
 *.o
-/w3ld
-/w3ldctl
+/honey
+/honeyctl
 core
 core.*

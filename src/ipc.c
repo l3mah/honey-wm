@@ -1,11 +1,11 @@
 /* Control socket and config execution.
  *
- * A unix socket at $XDG_RUNTIME_DIR/w3ld-$WAYLAND_DISPLAY.sock accepts one
- * command per connection from w3ldctl, integrated into the Wayland event loop
+ * A unix socket at $XDG_RUNTIME_DIR/honey-$WAYLAND_DISPLAY.sock accepts one
+ * command per connection from honeyctl, integrated into the Wayland event loop
  * (`subscribe` keeps its connection open as a status stream). The grammar:
  * set / set-ws / map / unmap / rule / windows / kb-layout / kb-repeat / input /
  * output / gamma / workspace-name / reload / ping / exit, plus any action name
- * as a direct verb. The config init (a shell script of w3ldctl calls) runs at
+ * as a direct verb. The config init (a shell script of honeyctl calls) runs at
  * startup and on `reload`, with its errors captured and shown in a floating
  * terminal (error-window); without an init, default bindings are loaded.
  */
@@ -19,7 +19,7 @@
 #include <wlr/types/wlr_keyboard.h>
 #include <unistd.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* --------------------------------------------------------------------- rules */
 
@@ -47,7 +47,7 @@ static bool parse_dim (
 	return true;
 }
 
-static void free_rule (struct w3ld_rule *rule) {
+static void free_rule (struct honey_rule *rule) {
 	if (rule->regex)
 		regfree(&rule->re);
 	free(rule->pattern);
@@ -59,7 +59,7 @@ static void free_rule (struct w3ld_rule *rule) {
  * action (parsed off the end): workspace <output:N|N> | float [default|W H] |
  * tile | suppress-maximize | no-focus. Same field+pattern+action replaces. */
 static void cmd_rule (
-	struct w3ld_server *server,
+	struct honey_server *server,
 	char *args,
 	char *reply,
 	size_t reply_size
@@ -76,7 +76,7 @@ static void cmd_rule (
 		return;
 	}
 
-	enum w3ld_rule_field field;
+	enum honey_rule_field field;
 	bool regex = false;
 	char *field_token = tokens[0];
 	size_t field_length = strlen(field_token);
@@ -85,11 +85,11 @@ static void cmd_rule (
 		field_token[field_length - 3] = '\0';
 	}
 	if (!strcmp(field_token, "app-id"))
-		field = W3LD_RULE_APP_ID;
+		field = HONEY_RULE_APP_ID;
 	else if (!strcmp(field_token, "title"))
-		field = W3LD_RULE_TITLE;
+		field = HONEY_RULE_TITLE;
 	else if (!strcmp(field_token, "initial-title"))
-		field = W3LD_RULE_INITIAL_TITLE;
+		field = HONEY_RULE_INITIAL_TITLE;
 	else {
 		snprintf(reply, reply_size,
 				"error: field must be app-id, title or initial-title");
@@ -97,7 +97,7 @@ static void cmd_rule (
 	}
 
 	/* Parse the action off the end. */
-	enum w3ld_rule_action action;
+	enum honey_rule_action action;
 	char *ws_addr = NULL;
 	double float_w = 0, float_h = 0;
 	int float_w_px = 0, float_h_px = 0;
@@ -105,27 +105,27 @@ static void cmd_rule (
 	char *last = tokens[count - 1];
 
 	if (!strcmp(last, "tile")) {
-		action = W3LD_RULE_TILE;
+		action = HONEY_RULE_TILE;
 		pattern_end = count - 1;
 	} else if (!strcmp(last, "suppress-maximize")) {
-		action = W3LD_RULE_SUPPRESS_MAXIMIZE;
+		action = HONEY_RULE_SUPPRESS_MAXIMIZE;
 		pattern_end = count - 1;
 	} else if (!strcmp(last, "no-focus")) {
-		action = W3LD_RULE_NO_FOCUS;
+		action = HONEY_RULE_NO_FOCUS;
 		pattern_end = count - 1;
 	} else if (count >= 3 && !strcmp(tokens[count - 2], "workspace")) {
-		action = W3LD_RULE_WORKSPACE;
+		action = HONEY_RULE_WORKSPACE;
 		ws_addr = last;
 		pattern_end = count - 2;
 	} else if (!strcmp(last, "float")) {
-		action = W3LD_RULE_FLOAT;
+		action = HONEY_RULE_FLOAT;
 		pattern_end = count - 1;
 	} else if (count >= 3 && !strcmp(tokens[count - 2], "float")
 			&& !strcmp(last, "default")) {
-		action = W3LD_RULE_FLOAT;
+		action = HONEY_RULE_FLOAT;
 		pattern_end = count - 2;
 	} else if (count >= 4 && !strcmp(tokens[count - 3], "float")) {
-		action = W3LD_RULE_FLOAT;
+		action = HONEY_RULE_FLOAT;
 		if (!parse_dim(tokens[count - 2], &float_w, &float_w_px)
 				|| !parse_dim(last, &float_h, &float_h_px)) {
 			snprintf(reply, reply_size, "error: bad float size");
@@ -149,7 +149,7 @@ static void cmd_rule (
 		offset += snprintf(pattern + offset, sizeof pattern - offset, "%s%s",
 				i > 1 ? " " : "", tokens[i]);
 
-	struct w3ld_rule *rule = calloc(1, sizeof *rule);
+	struct honey_rule *rule = calloc(1, sizeof *rule);
 	rule->field = field;
 	rule->regex = regex;
 	rule->pattern = strdup(pattern);
@@ -169,7 +169,7 @@ static void cmd_rule (
 	}
 
 	/* Replace an existing rule with the same field + pattern + action. */
-	struct w3ld_rule *existing;
+	struct honey_rule *existing;
 	wl_list_for_each(existing, &server->rules, link) {
 		if (existing->field == rule->field && existing->action == rule->action
 				&& existing->regex == rule->regex
@@ -184,18 +184,18 @@ static void cmd_rule (
 }
 
 static void cmd_windows (
-	struct w3ld_server *server,
+	struct honey_server *server,
 	char *reply,
 	size_t reply_size
 ) {
 	size_t offset = 0;
-	struct w3ld_window *window;
+	struct honey_window *window;
 	wl_list_for_each(window, &server->windows, link) {
 		if (!window->mapped)
 			continue;
 		offset += snprintf(reply + offset, reply_size - offset,
 				"app-id=\"%s\" title=\"%s\" ws=%s:%d%s%s%s%s%s\n",
-				w3ld_window_app_id(window), w3ld_window_title(window),
+				honey_window_app_id(window), honey_window_title(window),
 				window->workspace->output->wlr_output->name,
 				window->workspace->number,
 				window == server->focused ? " [focused]" : "",
@@ -213,7 +213,7 @@ static void cmd_windows (
 /* ------------------------------------------------------------------ dispatch */
 
 static void dispatch (
-	struct w3ld_server *server,
+	struct honey_server *server,
 	char *line,
 	char *reply,
 	size_t reply_size
@@ -231,7 +231,7 @@ static void dispatch (
 		char *action = space + 1;
 		while (*action == ' ')
 			action++;
-		if (w3ld_binding_add(server, rest, action))
+		if (honey_binding_add(server, rest, action))
 			snprintf(reply, reply_size, "ok");
 		else
 			snprintf(reply, reply_size, "error: bad combo '%s'", rest);
@@ -242,7 +242,7 @@ static void dispatch (
 		char *combo = line + 6;
 		while (*combo == ' ')
 			combo++;
-		if (w3ld_binding_remove(server, combo))
+		if (honey_binding_remove(server, combo))
 			snprintf(reply, reply_size, "ok");
 		else
 			snprintf(reply, reply_size, "error: not mapped");
@@ -262,7 +262,7 @@ static void dispatch (
 		char *value = space + 1;
 		while (*value == ' ')
 			value++;
-		if (w3ld_config_set(server, rest, value))
+		if (honey_config_set(server, rest, value))
 			snprintf(reply, reply_size, "ok");
 		else
 			snprintf(reply, reply_size, "error: bad set '%s'", rest);
@@ -285,7 +285,7 @@ static void dispatch (
 			snprintf(reply, reply_size, "error: usage: env <KEY> <VALUE>");
 			return;
 		}
-		/* Sets w3ld's own environment, so apps it spawns afterward inherit it —
+		/* Sets honey's own environment, so apps it spawns afterward inherit it —
 		 * the compositor toolkit/backend hints belong here (a plain export in
 		 * the init would only reach the init's own shell). */
 		setenv(rest, value, 1);
@@ -305,7 +305,7 @@ static void dispatch (
 					" [variant] [model] [options] [rules]");
 			return;
 		}
-		if (w3ld_kb_layout(server, layout, variant, model, options, rules))
+		if (honey_kb_layout(server, layout, variant, model, options, rules))
 			snprintf(reply, reply_size, "ok");
 		else
 			snprintf(reply, reply_size, "error: bad keyboard layout");
@@ -318,7 +318,7 @@ static void dispatch (
 			snprintf(reply, reply_size, "error: usage: kb-repeat <rate> <delay>");
 			return;
 		}
-		if (w3ld_kb_repeat(server, rate, delay))
+		if (honey_kb_repeat(server, rate, delay))
 			snprintf(reply, reply_size, "ok");
 		else
 			snprintf(reply, reply_size, "error: bad repeat values");
@@ -335,7 +335,7 @@ static void dispatch (
 					"error: usage: input <device|*> <option> <value>");
 			return;
 		}
-		if (w3ld_input_rule_add(server, device, option, value))
+		if (honey_input_rule_add(server, device, option, value))
 			snprintf(reply, reply_size, "ok");
 		else
 			snprintf(reply, reply_size, "error: unknown input option '%s'",
@@ -353,13 +353,13 @@ static void dispatch (
 					"error: usage: set-ws <output:N|N> <key> <value>");
 			return;
 		}
-		struct w3ld_workspace *workspace;
-		if (!w3ld_parse_ws_addr(server, addr, &workspace)) {
+		struct honey_workspace *workspace;
+		if (!honey_parse_ws_addr(server, addr, &workspace)) {
 			snprintf(reply, reply_size, "error: unknown workspace '%s'", addr);
 			return;
 		}
 		if (!strcmp(key, "layout")) {
-			const struct w3ld_layout *layout = w3ld_layout_by_name(value);
+			const struct honey_layout *layout = honey_layout_by_name(value);
 			if (!layout) {
 				snprintf(reply, reply_size, "error: unknown layout '%s'",
 						value);
@@ -373,7 +373,7 @@ static void dispatch (
 			workspace->nmaster = atoi(value);
 			workspace->has_nmaster = true;
 		} else if (!strcmp(key, "master-orientation")) {
-			if (!w3ld_parse_orientation(value, &workspace->orientation)) {
+			if (!honey_parse_orientation(value, &workspace->orientation)) {
 				snprintf(reply, reply_size, "error: bad orientation '%s'",
 						value);
 				return;
@@ -385,7 +385,7 @@ static void dispatch (
 					" master-orientation)", key);
 			return;
 		}
-		w3ld_arrange(server);
+		honey_arrange(server);
 		snprintf(reply, reply_size, "ok");
 		return;
 	}
@@ -402,18 +402,18 @@ static void dispatch (
 		}
 		char *space = strchr(rest, ' ');
 		char *name = space ? space + 1 : NULL;
-		struct w3ld_workspace *workspace =
-			w3ld_workspace_get(server->focused_output, number);
+		struct honey_workspace *workspace =
+			honey_workspace_get(server->focused_output, number);
 		free(workspace->name);
 		workspace->name = (name && *name) ? strdup(name) : NULL;
-		w3ld_status_broadcast(server);
+		honey_status_broadcast(server);
 		snprintf(reply, reply_size, "ok");
 		return;
 	}
 
 	if (!strncmp(line, "output ", 7)) {
 		char error[256];
-		if (w3ld_output_command(server, line + 7, error, sizeof error))
+		if (honey_output_command(server, line + 7, error, sizeof error))
 			snprintf(reply, reply_size, "ok");
 		else
 			snprintf(reply, reply_size, "error: %s", error);
@@ -433,7 +433,7 @@ static void dispatch (
 			return;
 		}
 		if (!strcmp(arg, "off") || !strcmp(arg, "reset")) {
-			w3ld_gamma_set(server, 0, 1.0);
+			honey_gamma_set(server, 0, 1.0);
 			snprintf(reply, reply_size, "ok");
 			return;
 		}
@@ -475,7 +475,7 @@ static void dispatch (
 					? current + atof(val) : atof(val);
 			double value = percent / 100.0;
 			value = value < min ? min : value > max ? max : value;
-			w3ld_gamma_set(server, server->gamma_temperature, value);
+			honey_gamma_set(server, server->gamma_temperature, value);
 			snprintf(reply, reply_size, "ok");
 			return;
 		}
@@ -498,7 +498,7 @@ static void dispatch (
 					? baseline + atof(val) : atof(val);
 			temperature = temperature < 1000 ? 1000
 					: temperature > 10000 ? 10000 : temperature;
-			w3ld_gamma_set(server, temperature, server->gamma_brightness);
+			honey_gamma_set(server, temperature, server->gamma_brightness);
 			snprintf(reply, reply_size, "ok");
 			return;
 		}
@@ -515,7 +515,7 @@ static void dispatch (
 		}
 		double value = brightness / 100.0;
 		value = value < min ? min : value > max ? max : value;
-		w3ld_gamma_set(server, temperature, value);
+		honey_gamma_set(server, temperature, value);
 		snprintf(reply, reply_size, "ok");
 		return;
 	}
@@ -530,7 +530,7 @@ static void dispatch (
 	}
 	if (!strcmp(line, "outputs")) {
 		size_t offset = 0;
-		struct w3ld_output *output;
+		struct honey_output *output;
 		wl_list_for_each(output, &server->outputs, link) {
 			offset += snprintf(reply + offset, reply_size - offset,
 					"%s %dx%d at %d,%d scale %.2f ws %d%s\n",
@@ -549,7 +549,7 @@ static void dispatch (
 	}
 	if (!strcmp(line, "binds")) {
 		size_t offset = 0;
-		struct w3ld_keybind *keybind;
+		struct honey_keybind *keybind;
 		wl_list_for_each(keybind, &server->keybinds, link) {
 			char name[64];
 			xkb_keysym_get_name(keybind->sym, name, sizeof name);
@@ -571,13 +571,13 @@ static void dispatch (
 		char *key = line + 4;
 		while (*key == ' ')
 			key++;
-		if (!w3ld_config_get(server, key, reply, reply_size))
+		if (!honey_config_get(server, key, reply, reply_size))
 			snprintf(reply, reply_size, "error: unknown key '%s'", key);
 		return;
 	}
 
 	if (!strcmp(line, "reload")) {
-		w3ld_config_run(server);
+		honey_config_run(server);
 		snprintf(reply, reply_size, "ok");
 		return;
 	}
@@ -592,7 +592,7 @@ static void dispatch (
 	}
 
 	/* Any other line is treated as an action verb (spawn, workspace, ...). */
-	if (w3ld_action_run(server, line))
+	if (honey_action_run(server, line))
 		snprintf(reply, reply_size, "ok");
 	else
 		snprintf(reply, reply_size, "error: unknown command '%s'", line);
@@ -600,7 +600,7 @@ static void dispatch (
 
 /* -------------------------------------------------------------------- client */
 
-static void client_drop (struct w3ld_ipc_client *client) {
+static void client_drop (struct honey_ipc_client *client) {
 	wl_event_source_remove(client->source);
 	close(client->fd);
 	wl_list_remove(&client->link);
@@ -612,7 +612,7 @@ static int handle_client (
 	uint32_t mask,
 	void *data
 ) {
-	struct w3ld_ipc_client *client = data;
+	struct honey_ipc_client *client = data;
 	char buffer[1024];
 	ssize_t count = recv(fd, buffer, sizeof buffer - 1, 0);
 	if (count <= 0) {
@@ -627,7 +627,7 @@ static int handle_client (
 	/* `subscribe` holds the connection open as a status-stream client. */
 	if (!strcmp(buffer, "subscribe")) {
 		client->subscriber = true;
-		w3ld_status_snapshot(client->server, client);
+		honey_status_snapshot(client->server, client);
 		return 0;
 	}
 
@@ -643,12 +643,12 @@ static int handle_listen (
 	uint32_t mask,
 	void *data
 ) {
-	struct w3ld_server *server = data;
+	struct honey_server *server = data;
 	int client_fd = accept4(fd, NULL, NULL, SOCK_CLOEXEC | SOCK_NONBLOCK);
 	if (client_fd < 0)
 		return 0;
 
-	struct w3ld_ipc_client *client = calloc(1, sizeof *client);
+	struct honey_ipc_client *client = calloc(1, sizeof *client);
 	client->server = server;
 	client->fd = client_fd;
 	client->source = wl_event_loop_add_fd(server->event_loop, client_fd,
@@ -659,7 +659,7 @@ static int handle_listen (
 
 /* -------------------------------------------------------------------- setup */
 
-void w3ld_ipc_setup (struct w3ld_server *server) {
+void honey_ipc_setup (struct honey_server *server) {
 	/* ipc_clients + ipc_fd are initialized in main() before backend start. */
 	const char *runtime = getenv("XDG_RUNTIME_DIR");
 	const char *display = getenv("WAYLAND_DISPLAY");
@@ -667,7 +667,7 @@ void w3ld_ipc_setup (struct w3ld_server *server) {
 		LOG("no XDG_RUNTIME_DIR/WAYLAND_DISPLAY; control socket disabled");
 		return;
 	}
-	snprintf(server->ipc_path, sizeof server->ipc_path, "%s/w3ld-%s.sock",
+	snprintf(server->ipc_path, sizeof server->ipc_path, "%s/honey-%s.sock",
 			runtime, display);
 
 	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
@@ -693,27 +693,27 @@ void w3ld_ipc_setup (struct w3ld_server *server) {
 
 /* ------------------------------------------------------------ config / init */
 
-static void load_default_bindings (struct w3ld_server *server) {
-	w3ld_binding_add(server, "super+Return", "spawn alacritty");
-	w3ld_binding_add(server, "super+shift+q", "close");
-	w3ld_binding_add(server, "super+j", "focus-next");
-	w3ld_binding_add(server, "super+k", "focus-prev");
-	w3ld_binding_add(server, "super+Tab", "workspace-back");
-	w3ld_binding_add(server, "super+Left", "focus-dir left");
-	w3ld_binding_add(server, "super+Right", "focus-dir right");
-	w3ld_binding_add(server, "super+Up", "focus-dir up");
-	w3ld_binding_add(server, "super+Down", "focus-dir down");
-	w3ld_binding_add(server, "super+shift+Left", "move-to-output left");
-	w3ld_binding_add(server, "super+shift+Right", "move-to-output right");
-	w3ld_binding_add(server, "super+shift+f", "toggle-float");
-	w3ld_binding_add(server, "super+e", "fullscreen");
-	w3ld_binding_add(server, "super+m", "maximize");
-	w3ld_binding_add(server, "super+shift+Return", "swap-master");
-	w3ld_binding_add(server, "super+shift+j", "swap-next");
-	w3ld_binding_add(server, "super+shift+k", "swap-prev");
-	w3ld_binding_add(server, "super+h", "master-mfact 0.05");
-	w3ld_binding_add(server, "super+l", "master-mfact -0.05");
-	w3ld_binding_add(server, "super+shift+Escape", "exit");
+static void load_default_bindings (struct honey_server *server) {
+	honey_binding_add(server, "super+Return", "spawn alacritty");
+	honey_binding_add(server, "super+shift+q", "close");
+	honey_binding_add(server, "super+j", "focus-next");
+	honey_binding_add(server, "super+k", "focus-prev");
+	honey_binding_add(server, "super+Tab", "workspace-back");
+	honey_binding_add(server, "super+Left", "focus-dir left");
+	honey_binding_add(server, "super+Right", "focus-dir right");
+	honey_binding_add(server, "super+Up", "focus-dir up");
+	honey_binding_add(server, "super+Down", "focus-dir down");
+	honey_binding_add(server, "super+shift+Left", "move-to-output left");
+	honey_binding_add(server, "super+shift+Right", "move-to-output right");
+	honey_binding_add(server, "super+shift+f", "toggle-float");
+	honey_binding_add(server, "super+e", "fullscreen");
+	honey_binding_add(server, "super+m", "maximize");
+	honey_binding_add(server, "super+shift+Return", "swap-master");
+	honey_binding_add(server, "super+shift+j", "swap-next");
+	honey_binding_add(server, "super+shift+k", "swap-prev");
+	honey_binding_add(server, "super+h", "master-mfact 0.05");
+	honey_binding_add(server, "super+l", "master-mfact -0.05");
+	honey_binding_add(server, "super+shift+Escape", "exit");
 
 	/* Ten workspaces on the number row: 1..9 then 0 for workspace 10. */
 	for (int number = 1; number <= 10; number++) {
@@ -721,14 +721,14 @@ static void load_default_bindings (struct w3ld_server *server) {
 		int key = number % 10;
 		snprintf(combo, sizeof combo, "super+%d", key);
 		snprintf(action, sizeof action, "workspace %d", number);
-		w3ld_binding_add(server, combo, action);
+		honey_binding_add(server, combo, action);
 		snprintf(combo, sizeof combo, "super+shift+%d", key);
 		snprintf(action, sizeof action, "move-to-workspace %d", number);
-		w3ld_binding_add(server, combo, action);
+		honey_binding_add(server, combo, action);
 	}
 }
 
-void w3ld_config_run (struct w3ld_server *server) {
+void honey_config_run (struct honey_server *server) {
 	char path[512] = {0};
 	if (server->config_path && server->config_path[0]) {
 		/* -c override, remembered from boot so reload uses the same file. */
@@ -737,18 +737,18 @@ void w3ld_config_run (struct w3ld_server *server) {
 		const char *config_home = getenv("XDG_CONFIG_HOME");
 		const char *home = getenv("HOME");
 		if (config_home && *config_home)
-			snprintf(path, sizeof path, "%s/w3ld/init", config_home);
+			snprintf(path, sizeof path, "%s/honey/init", config_home);
 		else if (home)
-			snprintf(path, sizeof path, "%s/.config/w3ld/init", home);
+			snprintf(path, sizeof path, "%s/.config/honey/init", home);
 	}
 
 	if (path[0] && access(path, R_OK) == 0) {
 		LOG("running config: %s", path);
 
-		/* Errors (w3ldctl error replies, shell errors) are captured; if any,
+		/* Errors (honeyctl error replies, shell errors) are captured; if any,
 		 * a floating terminal shows them — at startup and on reload alike.
 		 * The rule floats it; re-adding on reload is a harmless replace. */
-		char rule_line[] = "rule app-id w3ld-errors float 50% 40%";
+		char rule_line[] = "rule app-id honey-errors float 50% 40%";
 		char rule_reply[64];
 		dispatch(server, rule_line, rule_reply, sizeof rule_reply);
 
@@ -756,16 +756,16 @@ void w3ld_config_run (struct w3ld_server *server) {
 		char script[1024];
 		if (server->config.error_window) {
 			snprintf(script, sizeof script,
-					"errs=%s/w3ld-init-errors.log; /bin/sh '%s' 2>\"$errs\";"
+					"errs=%s/honey-init-errors.log; /bin/sh '%s' 2>\"$errs\";"
 					" if [ -s \"$errs\" ]; then"
-					" exec \"${TERMINAL:-alacritty}\" --class w3ld-errors -e"
-					" sh -c 'echo \"w3ld config errors:\"; echo;"
+					" exec \"${TERMINAL:-alacritty}\" --class honey-errors -e"
+					" sh -c 'echo \"honey config errors:\"; echo;"
 					" cat \"$0\"; echo; echo \"[enter to close]\"; read line'"
 					" \"$errs\"; fi",
 					runtime ? runtime : "/tmp", path);
 		} else {
 			snprintf(script, sizeof script,
-					"exec /bin/sh '%s' 2>%s/w3ld-init-errors.log",
+					"exec /bin/sh '%s' 2>%s/honey-init-errors.log",
 					path, runtime ? runtime : "/tmp");
 		}
 

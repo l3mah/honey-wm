@@ -7,25 +7,25 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* Find workspace `number` on `output`, creating it (in sorted position) if it
  * does not exist yet. */
-struct w3ld_workspace *w3ld_workspace_get (
-	struct w3ld_output *output,
+struct honey_workspace *honey_workspace_get (
+	struct honey_output *output,
 	int number
 ) {
-	struct w3ld_workspace *workspace;
+	struct honey_workspace *workspace;
 	wl_list_for_each(workspace, &output->workspaces, link) {
 		if (workspace->number == number)
 			return workspace;
 	}
 
-	struct w3ld_workspace *created = calloc(1, sizeof *created);
+	struct honey_workspace *created = calloc(1, sizeof *created);
 	created->output = output;
 	created->number = number;
 
-	struct w3ld_workspace *after;
+	struct honey_workspace *after;
 	wl_list_for_each(after, &output->workspaces, link) {
 		if (after->number > number)
 			break;
@@ -35,8 +35,8 @@ struct w3ld_workspace *w3ld_workspace_get (
 }
 
 /* First mapped window on a workspace in tiling order, or NULL. */
-struct w3ld_window *w3ld_workspace_first_window (struct w3ld_workspace *workspace) {
-	struct w3ld_window *window;
+struct honey_window *honey_workspace_first_window (struct honey_workspace *workspace) {
+	struct honey_window *window;
 	wl_list_for_each(window, &workspace->output->server->windows, link) {
 		if (window->mapped && window->workspace == workspace)
 			return window;
@@ -46,15 +46,15 @@ struct w3ld_window *w3ld_workspace_first_window (struct w3ld_workspace *workspac
 
 /* The nearest output in a direction from `from`, scored by primary-axis
  * distance plus a perpendicular-offset penalty, or NULL if there is none. */
-struct w3ld_output *w3ld_output_in_direction (
-	struct w3ld_output *from,
-	enum w3ld_direction direction
+struct honey_output *honey_output_in_direction (
+	struct honey_output *from,
+	enum honey_direction direction
 ) {
 	int from_x = from->usable.x + from->usable.width / 2;
 	int from_y = from->usable.y + from->usable.height / 2;
 
-	struct w3ld_output *output;
-	struct w3ld_output *best = NULL;
+	struct honey_output *output;
+	struct honey_output *best = NULL;
 	long best_score = -1;
 	wl_list_for_each(output, &from->server->outputs, link) {
 		if (output == from)
@@ -64,9 +64,9 @@ struct w3ld_output *w3ld_output_in_direction (
 
 		long primary, secondary;
 		switch (direction) {
-		case W3LD_DIR_LEFT:  if (dx >= 0) continue; primary = -dx; secondary = labs(dy); break;
-		case W3LD_DIR_RIGHT: if (dx <= 0) continue; primary =  dx; secondary = labs(dy); break;
-		case W3LD_DIR_UP:    if (dy >= 0) continue; primary = -dy; secondary = labs(dx); break;
+		case HONEY_DIR_LEFT:  if (dx >= 0) continue; primary = -dx; secondary = labs(dy); break;
+		case HONEY_DIR_RIGHT: if (dx <= 0) continue; primary =  dx; secondary = labs(dy); break;
+		case HONEY_DIR_UP:    if (dy >= 0) continue; primary = -dy; secondary = labs(dx); break;
 		default:             if (dy <= 0) continue; primary =  dy; secondary = labs(dx); break;
 		}
 
@@ -81,12 +81,12 @@ struct w3ld_output *w3ld_output_in_direction (
 
 /* Parse a workspace address: "output:N" (connector name) or a bare "N" on the
  * focused output. Creates the workspace on demand. */
-bool w3ld_parse_ws_addr (
-	struct w3ld_server *server,
+bool honey_parse_ws_addr (
+	struct honey_server *server,
 	const char *addr,
-	struct w3ld_workspace **out
+	struct honey_workspace **out
 ) {
-	struct w3ld_output *output = server->focused_output;
+	struct honey_output *output = server->focused_output;
 	const char *number_part = addr;
 
 	const char *colon = strchr(addr, ':');
@@ -97,7 +97,7 @@ bool w3ld_parse_ws_addr (
 			return false;
 		memcpy(name, addr, length);
 		name[length] = '\0';
-		output = w3ld_output_by_name(server, name);
+		output = honey_output_by_name(server, name);
 		number_part = colon + 1;
 	}
 	if (!output)
@@ -108,16 +108,16 @@ bool w3ld_parse_ws_addr (
 	if (end == number_part || *end != '\0' || number < 1)
 		return false;
 
-	*out = w3ld_workspace_get(output, (int)number);
+	*out = honey_workspace_get(output, (int)number);
 	return true;
 }
 
 /* The output with this connector name (e.g. "DP-1"), or NULL. */
-struct w3ld_output *w3ld_output_by_name (
-	struct w3ld_server *server,
+struct honey_output *honey_output_by_name (
+	struct honey_server *server,
 	const char *name
 ) {
-	struct w3ld_output *output;
+	struct honey_output *output;
 	wl_list_for_each(output, &server->outputs, link) {
 		if (!strcmp(output->wlr_output->name, name))
 			return output;
@@ -126,12 +126,12 @@ struct w3ld_output *w3ld_output_by_name (
 }
 
 /* The output whose usable box contains the point (x, y), or NULL. */
-struct w3ld_output *w3ld_output_at (
-	struct w3ld_server *server,
+struct honey_output *honey_output_at (
+	struct honey_server *server,
 	double x,
 	double y
 ) {
-	struct w3ld_output *output;
+	struct honey_output *output;
 	wl_list_for_each(output, &server->outputs, link) {
 		struct wlr_box *box = &output->usable;
 		if (x >= box->x && x < box->x + box->width

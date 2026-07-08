@@ -22,9 +22,9 @@
 #include <wlr/types/wlr_single_pixel_buffer_v1.h>
 #include <wlr/types/wlr_viewporter.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
-void w3ld_protocols_setup (struct w3ld_server *server) {
+void honey_protocols_setup (struct honey_server *server) {
 	struct wl_display *display = server->display;
 
 	/* let clients allocate dmabuf-backed buffers against our renderer */

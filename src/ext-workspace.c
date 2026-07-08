@@ -1,7 +1,7 @@
 /* ext-workspace protocol: standardized workspace info for generic bars.
  *
  * Mirrors the compositor's workspace model onto ext-workspace-v1: one group per
- * output, one workspace handle per w3ld_workspace (id "OUTPUT:N", name = label
+ * output, one workspace handle per honey_workspace (id "OUTPUT:N", name = label
  * or number, active state tracked). Client activate requests switch the
  * workspace on its output. Sync runs after every arrange, creating handles
  * lazily, so the mirror can never drift from the real state.
@@ -10,15 +10,15 @@
 
 #include <wlr/types/wlr_ext_workspace_v1.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* --------------------------------------------------------------------- sync */
 
-void w3ld_ext_workspace_sync (struct w3ld_server *server) {
+void honey_ext_workspace_sync (struct honey_server *server) {
 	if (!server->ext_workspace_manager)
 		return;
 
-	struct w3ld_output *output;
+	struct honey_output *output;
 	wl_list_for_each(output, &server->outputs, link) {
 		if (!output->ext_group) {
 			output->ext_group = wlr_ext_workspace_group_handle_v1_create(
@@ -27,7 +27,7 @@ void w3ld_ext_workspace_sync (struct w3ld_server *server) {
 					output->wlr_output);
 		}
 
-		struct w3ld_workspace *workspace;
+		struct honey_workspace *workspace;
 		wl_list_for_each(workspace, &output->workspaces, link) {
 			if (!workspace->ext) {
 				char id[64];
@@ -58,7 +58,7 @@ static void handle_commit (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, ext_workspace_commit);
 	struct wlr_ext_workspace_v1_commit_event *event = data;
 
@@ -67,15 +67,15 @@ static void handle_commit (
 		if (request->type != WLR_EXT_WORKSPACE_V1_REQUEST_ACTIVATE
 				|| !request->activate.workspace)
 			continue;
-		struct w3ld_workspace *workspace = request->activate.workspace->data;
+		struct honey_workspace *workspace = request->activate.workspace->data;
 		if (workspace)
-			w3ld_switch_workspace(workspace->output, workspace->number);
+			honey_switch_workspace(workspace->output, workspace->number);
 	}
 }
 
 /* -------------------------------------------------------------------- setup */
 
-void w3ld_ext_workspace_setup (struct w3ld_server *server) {
+void honey_ext_workspace_setup (struct honey_server *server) {
 	server->ext_workspace_manager =
 		wlr_ext_workspace_manager_v1_create(server->display, 1);
 	server->ext_workspace_commit.notify = handle_commit;

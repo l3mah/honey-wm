@@ -1,4 +1,4 @@
-/* w3ld — a tiling Wayland compositor on wlroots.
+/* honey — a tiling Wayland compositor on wlroots.
  *
  * Bootstrap: create the wlroots backend, renderer, and allocator, build the
  * scene graph, advertise the essential protocol globals, then run the Wayland
@@ -22,28 +22,28 @@
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/util/log.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* ------------------------------------------------------------------- logging */
 
-void w3ld_log (const char *format, ...) {
+void honey_log (const char *format, ...) {
 	va_list args;
-	fputs("w3ld: ", stderr);
+	fputs("honey: ", stderr);
 	va_start(args, format);
 	vfprintf(stderr, format, args);
 	va_end(args);
 	fputc('\n', stderr);
 }
 
-void w3ld_dbg (const char *format, ...) {
+void honey_dbg (const char *format, ...) {
 	static int enabled = -1;
 	if (enabled < 0)
-		enabled = getenv("W3LD_DEBUG") != NULL;
+		enabled = getenv("HONEY_DEBUG") != NULL;
 	if (!enabled)
 		return;
 
 	va_list args;
-	fputs("w3ld[dbg]: ", stderr);
+	fputs("honey[dbg]: ", stderr);
 	va_start(args, format);
 	vfprintf(stderr, format, args);
 	va_end(args);
@@ -52,7 +52,7 @@ void w3ld_dbg (const char *format, ...) {
 
 /* ------------------------------------------------------------------ children */
 
-static struct w3ld_server *signal_server; /* for the SIGCHLD handler */
+static struct honey_server *signal_server; /* for the SIGCHLD handler */
 
 /* Reap exited children, except the Xwayland process (wlroots waits on it). */
 static void reap_children (int signo) {
@@ -84,9 +84,9 @@ int main (
 	struct sigaction child_action = { .sa_handler = reap_children };
 	sigaction(SIGCHLD, &child_action, NULL);
 
-	struct w3ld_server server = {0};
+	struct honey_server server = {0};
 	signal_server = &server;
-	w3ld_config_defaults(&server.config);
+	honey_config_defaults(&server.config);
 
 	/* -c <path> overrides the config file; remembered so reload uses it too.
 	 * argv lives for the process, so the pointer is safe to keep. */
@@ -131,19 +131,19 @@ int main (
 	server.scene_layout = wlr_scene_attach_output_layout(server.scene,
 			server.output_layout);
 
-	w3ld_layer_setup(&server);
-	w3ld_output_setup(&server);
-	w3ld_output_manager_setup(&server);
-	w3ld_window_setup(&server);
-	w3ld_decoration_setup(&server);
-	w3ld_seat_setup(&server);
-	w3ld_input_setup(&server);
-	w3ld_binding_setup(&server);
-	w3ld_protocols_setup(&server);
-	w3ld_handlers_setup(&server);
-	w3ld_gamma_setup(&server);
-	w3ld_ext_workspace_setup(&server);
-	w3ld_xwayland_setup(&server);
+	honey_layer_setup(&server);
+	honey_output_setup(&server);
+	honey_output_manager_setup(&server);
+	honey_window_setup(&server);
+	honey_decoration_setup(&server);
+	honey_seat_setup(&server);
+	honey_input_setup(&server);
+	honey_binding_setup(&server);
+	honey_protocols_setup(&server);
+	honey_handlers_setup(&server);
+	honey_gamma_setup(&server);
+	honey_ext_workspace_setup(&server);
+	honey_xwayland_setup(&server);
 
 	const char *socket = wl_display_add_socket_auto(server.display);
 	if (!socket) {
@@ -162,13 +162,13 @@ int main (
 	setenv("WAYLAND_DISPLAY", socket, true);
 	/* Declare the session so toolkits and portals identify it (only if a
 	 * session manager hasn't already — hence overwrite = 0). */
-	setenv("XDG_CURRENT_DESKTOP", "w3ld", 0);
-	setenv("XDG_SESSION_DESKTOP", "w3ld", 0);
+	setenv("XDG_CURRENT_DESKTOP", "honey", 0);
+	setenv("XDG_SESSION_DESKTOP", "honey", 0);
 	setenv("XDG_SESSION_TYPE", "wayland", 0);
 	LOG("running on WAYLAND_DISPLAY=%s", socket);
 
-	w3ld_ipc_setup(&server);
-	w3ld_config_run(&server);
+	honey_ipc_setup(&server);
+	honey_config_run(&server);
 
 	/* Load a cursor image up front; without this the cursor is invisible
 	 * until the first motion event sets one. */

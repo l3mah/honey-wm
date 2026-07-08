@@ -20,7 +20,7 @@
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* --------------------------------------------------------------- cursor-shape */
 
@@ -28,7 +28,7 @@ static void handle_cursor_shape (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, request_cursor_shape);
 	struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
 	if (server->seat->pointer_state.focused_client == event->seat_client) {
@@ -43,17 +43,17 @@ static void handle_new_virtual_keyboard (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, new_virtual_keyboard);
 	struct wlr_virtual_keyboard_v1 *keyboard = data;
-	w3ld_seat_new_keyboard(server, &keyboard->keyboard.base);
+	honey_seat_new_keyboard(server, &keyboard->keyboard.base);
 }
 
 static void handle_new_virtual_pointer (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, new_virtual_pointer);
 	struct wlr_virtual_pointer_v1_new_pointer_event *event = data;
 	wlr_cursor_attach_input_device(server->cursor,
@@ -66,14 +66,14 @@ static void handle_request_activate (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, request_activate);
 	struct wlr_xdg_activation_v1_request_activate_event *event = data;
 
-	struct w3ld_window *window;
+	struct honey_window *window;
 	wl_list_for_each(window, &server->windows, link) {
-		if (window->mapped && w3ld_window_surface(window) == event->surface) {
-			w3ld_focus_window(window);
+		if (window->mapped && honey_window_surface(window) == event->surface) {
+			honey_focus_window(window);
 			return;
 		}
 	}
@@ -81,7 +81,7 @@ static void handle_request_activate (
 
 /* -------------------------------------------------------------- idle-inhibit */
 
-static void update_idle_inhibit (struct w3ld_server *server) {
+static void update_idle_inhibit (struct honey_server *server) {
 	wlr_idle_notifier_v1_set_inhibited(server->idle_notifier,
 			!wl_list_empty(&server->idle_inhibitors));
 }
@@ -90,9 +90,9 @@ static void idle_inhibitor_destroy (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_idle_inhibitor *inhibitor =
+	struct honey_idle_inhibitor *inhibitor =
 		wl_container_of(listener, inhibitor, destroy);
-	struct w3ld_server *server = inhibitor->server;
+	struct honey_server *server = inhibitor->server;
 	wl_list_remove(&inhibitor->destroy.link);
 	wl_list_remove(&inhibitor->link);
 	free(inhibitor);
@@ -103,11 +103,11 @@ static void handle_new_idle_inhibitor (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, new_idle_inhibitor);
 	struct wlr_idle_inhibitor_v1 *wlr_inhibitor = data;
 
-	struct w3ld_idle_inhibitor *inhibitor = calloc(1, sizeof *inhibitor);
+	struct honey_idle_inhibitor *inhibitor = calloc(1, sizeof *inhibitor);
 	inhibitor->server = server;
 	inhibitor->destroy.notify = idle_inhibitor_destroy;
 	wl_signal_add(&wlr_inhibitor->events.destroy, &inhibitor->destroy);
@@ -121,7 +121,7 @@ static void constraint_destroy (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, constraint_destroy);
 	wl_list_remove(&server->constraint_destroy.link);
 	wl_list_init(&server->constraint_destroy.link);
@@ -130,8 +130,8 @@ static void constraint_destroy (
 
 /* Activate the constraint matching the pointer-focused surface (if any),
  * deactivating the previous one. */
-void w3ld_constraint_check (
-	struct w3ld_server *server,
+void honey_constraint_check (
+	struct honey_server *server,
 	struct wlr_surface *surface
 ) {
 	struct wlr_pointer_constraint_v1 *constraint = surface
@@ -159,20 +159,20 @@ static void handle_new_constraint (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, new_constraint);
 	struct wlr_pointer_constraint_v1 *constraint = data;
 	if (server->seat->pointer_state.focused_surface == constraint->surface)
-		w3ld_constraint_check(server, constraint->surface);
+		honey_constraint_check(server, constraint->surface);
 }
 
 /* ------------------------------------------------- keyboard-shortcuts-inhibit */
 
-bool w3ld_shortcuts_inhibited (struct w3ld_server *server) {
+bool honey_shortcuts_inhibited (struct honey_server *server) {
 	if (!server->focused)
 		return false;
-	struct wlr_surface *surface = w3ld_window_surface(server->focused);
-	struct w3ld_shortcuts_inhibitor *shortcuts;
+	struct wlr_surface *surface = honey_window_surface(server->focused);
+	struct honey_shortcuts_inhibitor *shortcuts;
 	wl_list_for_each(shortcuts, &server->shortcuts_inhibitors, link) {
 		if (shortcuts->inhibitor->active
 				&& shortcuts->inhibitor->surface == surface)
@@ -185,7 +185,7 @@ static void shortcuts_inhibitor_destroy (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_shortcuts_inhibitor *shortcuts =
+	struct honey_shortcuts_inhibitor *shortcuts =
 		wl_container_of(listener, shortcuts, destroy);
 	wl_list_remove(&shortcuts->destroy.link);
 	wl_list_remove(&shortcuts->link);
@@ -196,12 +196,12 @@ static void handle_new_shortcuts_inhibitor (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, new_shortcuts_inhibitor);
 	struct wlr_keyboard_shortcuts_inhibitor_v1 *wlr_inhibitor = data;
 	wlr_keyboard_shortcuts_inhibitor_v1_activate(wlr_inhibitor);
 
-	struct w3ld_shortcuts_inhibitor *shortcuts = calloc(1, sizeof *shortcuts);
+	struct honey_shortcuts_inhibitor *shortcuts = calloc(1, sizeof *shortcuts);
 	shortcuts->inhibitor = wlr_inhibitor;
 	shortcuts->destroy.notify = shortcuts_inhibitor_destroy;
 	wl_signal_add(&wlr_inhibitor->events.destroy, &shortcuts->destroy);
@@ -210,7 +210,7 @@ static void handle_new_shortcuts_inhibitor (
 
 /* -------------------------------------------------------------------- setup */
 
-void w3ld_handlers_setup (struct w3ld_server *server) {
+void honey_handlers_setup (struct honey_server *server) {
 	wl_list_init(&server->idle_inhibitors);
 	wl_list_init(&server->shortcuts_inhibitors);
 	wl_list_init(&server->constraint_destroy.link);

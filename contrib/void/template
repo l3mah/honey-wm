@@ -1,14 +1,14 @@
-# Template file for 'w3ld'
+# Template file for 'honey'
 #
-# Copy this to a void-packages checkout as srcpkgs/w3ld/template, then:
-#   ./xbps-src pkg w3ld
-#   xbps-install --repository=hostdir/binpkgs w3ld
+# Copy this to a void-packages checkout as srcpkgs/honey/template, then:
+#   ./xbps-src pkg honey
+#   xbps-install --repository=hostdir/binpkgs honey
 #
 # At release time set `version` to the tag (without the leading v) and refresh
 # `checksum` with:  xbps-src fetch  &&  xbps-src -c update-check  (or compute
 # sha256 of the release tarball). The wlroots pin is `wlroots0.20-devel`; when
-# w3ld retargets wlroots 0.21, bump the major/minor and swap to wlroots0.21-devel.
-pkgname=w3ld
+# honey retargets wlroots 0.21, bump the major/minor and swap to wlroots0.21-devel.
+pkgname=honey
 version=0.20.0
 revision=1
 build_style=gnu-makefile
@@ -20,8 +20,8 @@ depends="xorg-server-xwayland"
 short_desc="Tiling Wayland compositor on wlroots (master-stack, dynamic config)"
 maintainer="Maxence Hamel <maxence.hc@gmail.com>"
 license="GPL-3.0-or-later"
-homepage="https://github.com/l3mah/w3ld-wm"
-distfiles="https://github.com/l3mah/w3ld-wm/archive/refs/tags/v${version}.tar.gz"
+homepage="https://github.com/l3mah/honey-wm"
+distfiles="https://github.com/l3mah/honey-wm/archive/refs/tags/v${version}.tar.gz"
 checksum=@REPLACE_WITH_SHA256_OF_THE_RELEASE_TARBALL@
 
 post_install() {

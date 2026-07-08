@@ -8,40 +8,40 @@
 
 #include <wlr/xwayland/xwayland.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* ------------------------------------------------------------------- helpers */
 
-void w3ld_switch_workspace (
-	struct w3ld_output *output,
+void honey_switch_workspace (
+	struct honey_output *output,
 	int number
 ) {
-	struct w3ld_workspace *target = w3ld_workspace_get(output, number);
+	struct honey_workspace *target = honey_workspace_get(output, number);
 	if (target == output->active)
 		return;
 	output->previous_number = output->active->number;
 	output->active = target;
 
-	struct w3ld_server *server = output->server;
+	struct honey_server *server = output->server;
 	server->focused_output = output;
-	w3ld_arrange(server);
-	w3ld_focus_output_active(output);
+	honey_arrange(server);
+	honey_focus_output_active(output);
 	/* Switching workspace (keyboard or a bar click) shouldn't yank the cursor
 	 * unless explicitly opted in — a click on the workspace module would
 	 * otherwise teleport the pointer away from the bar. */
 	if (server->config.warp_on_workspace_switch)
-		w3ld_warp_to_focus(server);
+		honey_warp_to_focus(server);
 }
 
 /* --------------------------------------------------------------------- focus */
 
-void w3ld_action_close (struct w3ld_server *server) {
+void honey_action_close (struct honey_server *server) {
 	if (server->focused)
-		w3ld_window_close(server->focused);
+		honey_window_close(server->focused);
 }
 
-void w3ld_action_focus (
-	struct w3ld_server *server,
+void honey_action_focus (
+	struct honey_server *server,
 	int direction
 ) {
 	if (!server->focused)
@@ -51,16 +51,16 @@ void w3ld_action_focus (
 	if (link == &server->windows)
 		link = direction > 0 ? link->next : link->prev;
 
-	struct w3ld_window *start = server->focused;
+	struct honey_window *start = server->focused;
 	while (link != &start->link) {
 		if (link == &server->windows) {
 			link = direction > 0 ? link->next : link->prev;
 			continue;
 		}
-		struct w3ld_window *window = wl_container_of(link, window, link);
+		struct honey_window *window = wl_container_of(link, window, link);
 		if (window->mapped && window->workspace == start->workspace) {
-			w3ld_focus_window(window);
-			w3ld_warp_to_focus(server);
+			honey_focus_window(window);
+			honey_warp_to_focus(server);
 			return;
 		}
 		link = direction > 0 ? link->next : link->prev;
@@ -69,44 +69,44 @@ void w3ld_action_focus (
 
 /* ---------------------------------------------------------------- workspaces */
 
-void w3ld_action_workspace (
-	struct w3ld_server *server,
+void honey_action_workspace (
+	struct honey_server *server,
 	int number
 ) {
 	if (server->focused_output)
-		w3ld_switch_workspace(server->focused_output, number);
+		honey_switch_workspace(server->focused_output, number);
 }
 
-void w3ld_action_move_to_workspace (
-	struct w3ld_server *server,
+void honey_action_move_to_workspace (
+	struct honey_server *server,
 	int number
 ) {
 	if (!server->focused)
 		return;
-	struct w3ld_window *window = server->focused;
-	struct w3ld_output *output = window->workspace->output;
-	window->workspace = w3ld_workspace_get(output, number);
+	struct honey_window *window = server->focused;
+	struct honey_output *output = window->workspace->output;
+	window->workspace = honey_workspace_get(output, number);
 
-	w3ld_arrange(server);
-	w3ld_focus_output_active(output);
+	honey_arrange(server);
+	honey_focus_output_active(output);
 	/* Sending a window away shifts focus to whatever remains here; don't let
 	 * that yank the cursor unless workspace-switch warping is opted in. */
 	if (server->config.warp_on_workspace_switch)
-		w3ld_warp_to_focus(server);
+		honey_warp_to_focus(server);
 }
 
-void w3ld_action_workspace_back (struct w3ld_server *server) {
+void honey_action_workspace_back (struct honey_server *server) {
 	if (server->focused_output)
-		w3ld_switch_workspace(server->focused_output,
+		honey_switch_workspace(server->focused_output,
 				server->focused_output->previous_number);
 }
 
 /* Cycle to the next/previous *existing* workspace on the focused output. */
-void w3ld_action_workspace_cycle (
-	struct w3ld_server *server,
+void honey_action_workspace_cycle (
+	struct honey_server *server,
 	int direction
 ) {
-	struct w3ld_output *output = server->focused_output;
+	struct honey_output *output = server->focused_output;
 	if (!output)
 		return;
 	struct wl_list *link = &output->active->link;
@@ -115,8 +115,8 @@ void w3ld_action_workspace_cycle (
 		link = direction > 0 ? link->next : link->prev;
 	if (link == &output->active->link)
 		return;
-	struct w3ld_workspace *target = wl_container_of(link, target, link);
-	w3ld_switch_workspace(output, target->number);
+	struct honey_workspace *target = wl_container_of(link, target, link);
+	honey_switch_workspace(output, target->number);
 }
 
 /* ---------------------------------------------------------------- stack order */
@@ -147,46 +147,46 @@ static void list_swap (
 }
 
 /* The next/previous tiled window on the same workspace, wrapping, or NULL. */
-static struct w3ld_window *tiled_neighbor (
-	struct w3ld_window *from,
+static struct honey_window *tiled_neighbor (
+	struct honey_window *from,
 	int direction
 ) {
 	struct wl_list *link = &from->link;
-	struct w3ld_server *server = from->server;
+	struct honey_server *server = from->server;
 	for (;;) {
 		link = direction > 0 ? link->next : link->prev;
 		if (link == &from->link)
 			return NULL;
 		if (link == &server->windows)
 			continue; /* the sentinel; the next step wraps past it */
-		struct w3ld_window *window = wl_container_of(link, window, link);
+		struct honey_window *window = wl_container_of(link, window, link);
 		if (window->mapped && window->workspace == from->workspace
-				&& w3ld_window_is_tiled(window))
+				&& honey_window_is_tiled(window))
 			return window;
 	}
 }
 
-void w3ld_action_swap (
-	struct w3ld_server *server,
+void honey_action_swap (
+	struct honey_server *server,
 	int direction
 ) {
-	struct w3ld_window *window = server->focused;
-	if (!window || !w3ld_window_is_tiled(window))
+	struct honey_window *window = server->focused;
+	if (!window || !honey_window_is_tiled(window))
 		return;
-	struct w3ld_window *other = tiled_neighbor(window, direction);
+	struct honey_window *other = tiled_neighbor(window, direction);
 	if (!other)
 		return;
 	list_swap(&window->link, &other->link);
-	w3ld_arrange(server);
-	w3ld_warp_to_focus(server);
+	honey_arrange(server);
+	honey_warp_to_focus(server);
 }
 
-void w3ld_action_swap_master (struct w3ld_server *server) {
-	struct w3ld_window *window = server->focused;
-	if (!window || !w3ld_window_is_tiled(window))
+void honey_action_swap_master (struct honey_server *server) {
+	struct honey_window *window = server->focused;
+	if (!window || !honey_window_is_tiled(window))
 		return;
-	struct w3ld_window *master = w3ld_workspace_first_window(window->workspace);
-	while (master && !w3ld_window_is_tiled(master))
+	struct honey_window *master = honey_workspace_first_window(window->workspace);
+	while (master && !honey_window_is_tiled(master))
 		master = tiled_neighbor(master, +1);
 	if (!master)
 		return;
@@ -195,8 +195,8 @@ void w3ld_action_swap_master (struct w3ld_server *server) {
 	if (!master || master == window)
 		return;
 	list_swap(&window->link, &master->link);
-	w3ld_arrange(server);
-	w3ld_warp_to_focus(server);
+	honey_arrange(server);
+	honey_warp_to_focus(server);
 }
 
 /* ---------------------------------------------------------- live layout tweaks */
@@ -204,43 +204,43 @@ void w3ld_action_swap_master (struct w3ld_server *server) {
 /* Live tweaks write the ACTIVE workspace's override (each workspace remembers
  * its own values); `set master-*` remains the global default. */
 
-void w3ld_action_mfact (
-	struct w3ld_server *server,
+void honey_action_mfact (
+	struct honey_server *server,
 	double delta
 ) {
 	if (!server->focused_output)
 		return;
-	struct w3ld_workspace *workspace = server->focused_output->active;
+	struct honey_workspace *workspace = server->focused_output->active;
 	double value = (workspace->has_mfact ? workspace->mfact
 			: server->config.master_mfact) + delta;
 	workspace->mfact = value < 0.05 ? 0.05 : value > 0.95 ? 0.95 : value;
 	workspace->has_mfact = true;
-	w3ld_arrange(server);
+	honey_arrange(server);
 }
 
-void w3ld_action_nmaster (
-	struct w3ld_server *server,
+void honey_action_nmaster (
+	struct honey_server *server,
 	int delta
 ) {
 	if (!server->focused_output)
 		return;
-	struct w3ld_workspace *workspace = server->focused_output->active;
+	struct honey_workspace *workspace = server->focused_output->active;
 	int value = (workspace->has_nmaster ? workspace->nmaster
 			: server->config.master_nmaster) + delta;
 	workspace->nmaster = value < 1 ? 1 : value;
 	workspace->has_nmaster = true;
-	w3ld_arrange(server);
+	honey_arrange(server);
 }
 
-void w3ld_action_orientation_cycle (struct w3ld_server *server) {
+void honey_action_orientation_cycle (struct honey_server *server) {
 	if (!server->focused_output)
 		return;
-	struct w3ld_workspace *workspace = server->focused_output->active;
-	enum w3ld_orientation current = workspace->has_orientation
+	struct honey_workspace *workspace = server->focused_output->active;
+	enum honey_orientation current = workspace->has_orientation
 		? workspace->orientation : server->config.master_orientation;
 	workspace->orientation = (current + 1) % 4;
 	workspace->has_orientation = true;
-	w3ld_arrange(server);
+	honey_arrange(server);
 }
 
 /* ------------------------------------------------------------- window states */
@@ -258,15 +258,15 @@ static int float_size (
 
 /* Seed the floating geometry: the configured size (or the app's own choice),
  * centred on the window's output. */
-void w3ld_float_seed (struct w3ld_window *window) {
-	struct w3ld_server *server = window->server;
+void honey_float_seed (struct honey_window *window) {
+	struct honey_server *server = window->server;
 	struct wlr_box *usable = &window->workspace->output->usable;
 
 	int width, height;
-	if (server->config.float_app_size && window->type == W3LD_WINDOW_X11) {
+	if (server->config.float_app_size && window->type == HONEY_WINDOW_X11) {
 		/* xwayland-scale (removable): X11 reports its size in the scaled
 		 * xwayland coordinate space. */
-		double scale = w3ld_output_xwayland_scale(window->workspace->output);
+		double scale = honey_output_xwayland_scale(window->workspace->output);
 		width = (int)(window->xwayland_surface->width / scale);
 		height = (int)(window->xwayland_surface->height / scale);
 	} else {
@@ -277,49 +277,49 @@ void w3ld_float_seed (struct w3ld_window *window) {
 			window->float_pending_app_size = true;
 		}
 	}
-	w3ld_window_set_float_geom(window, width, height);
+	honey_window_set_float_geom(window, width, height);
 }
 
-void w3ld_action_toggle_float (struct w3ld_server *server) {
-	struct w3ld_window *window = server->focused;
+void honey_action_toggle_float (struct honey_server *server) {
+	struct honey_window *window = server->focused;
 	if (!window)
 		return;
 	bool enable = !window->floating;
-	w3ld_window_clear_states(window);
+	honey_window_clear_states(window);
 	window->floating = enable;
 	if (enable)
-		w3ld_float_seed(window);
-	w3ld_window_apply_state(window);
+		honey_float_seed(window);
+	honey_window_apply_state(window);
 }
 
-void w3ld_action_fullscreen (struct w3ld_server *server) {
-	struct w3ld_window *window = server->focused;
+void honey_action_fullscreen (struct honey_server *server) {
+	struct honey_window *window = server->focused;
 	if (!window)
 		return;
 	bool enable = !window->fullscreen;
-	w3ld_window_clear_states(window);
+	honey_window_clear_states(window);
 	window->fullscreen = enable;
-	w3ld_window_apply_state(window);
+	honey_window_apply_state(window);
 }
 
-void w3ld_action_maximize (struct w3ld_server *server) {
-	struct w3ld_window *window = server->focused;
+void honey_action_maximize (struct honey_server *server) {
+	struct honey_window *window = server->focused;
 	if (!window)
 		return;
 	bool enable = !window->maximized;
-	w3ld_window_clear_states(window);
+	honey_window_clear_states(window);
 	window->maximized = enable;
-	w3ld_window_apply_state(window);
+	honey_window_apply_state(window);
 }
 
-void w3ld_action_fake_fullscreen (struct w3ld_server *server) {
-	struct w3ld_window *window = server->focused;
+void honey_action_fake_fullscreen (struct honey_server *server) {
+	struct honey_window *window = server->focused;
 	if (!window)
 		return;
 	bool enable = !window->fake_fullscreen;
-	w3ld_window_clear_states(window);
+	honey_window_clear_states(window);
 	window->fake_fullscreen = enable;
-	w3ld_window_apply_state(window);
+	honey_window_apply_state(window);
 }
 
 /* ---------------------------------------------------------------- directional */
@@ -328,22 +328,22 @@ void w3ld_action_fake_fullscreen (struct w3ld_server *server) {
  * by primary-axis distance plus a perpendicular penalty. workspace limits the
  * search to tiled windows of that workspace; NULL searches every visible
  * window (crossing monitors). */
-static struct w3ld_window *window_in_direction (
-	struct w3ld_server *server,
+static struct honey_window *window_in_direction (
+	struct honey_server *server,
 	int from_x,
 	int from_y,
-	enum w3ld_direction direction,
-	struct w3ld_workspace *workspace
+	enum honey_direction direction,
+	struct honey_workspace *workspace
 ) {
-	struct w3ld_window *best = NULL;
+	struct honey_window *best = NULL;
 	long best_score = -1;
-	struct w3ld_window *window;
+	struct honey_window *window;
 	wl_list_for_each(window, &server->windows, link) {
 		if (!window->mapped || window == server->focused)
 			continue;
 		if (workspace) {
 			if (window->workspace != workspace
-					|| !w3ld_window_is_tiled(window))
+					|| !honey_window_is_tiled(window))
 				continue;
 		} else if (window->workspace != window->workspace->output->active) {
 			continue;
@@ -353,9 +353,9 @@ static struct w3ld_window *window_in_direction (
 
 		long primary, secondary;
 		switch (direction) {
-		case W3LD_DIR_LEFT:  if (dx >= 0) continue; primary = -dx; secondary = labs(dy); break;
-		case W3LD_DIR_RIGHT: if (dx <= 0) continue; primary =  dx; secondary = labs(dy); break;
-		case W3LD_DIR_UP:    if (dy >= 0) continue; primary = -dy; secondary = labs(dx); break;
+		case HONEY_DIR_LEFT:  if (dx >= 0) continue; primary = -dx; secondary = labs(dy); break;
+		case HONEY_DIR_RIGHT: if (dx <= 0) continue; primary =  dx; secondary = labs(dy); break;
+		case HONEY_DIR_UP:    if (dy >= 0) continue; primary = -dy; secondary = labs(dx); break;
 		default:             if (dy <= 0) continue; primary =  dy; secondary = labs(dx); break;
 		}
 		long score = primary + secondary * 2;
@@ -369,9 +369,9 @@ static struct w3ld_window *window_in_direction (
 
 /* Focus the nearest visible window in a direction (crossing monitors); if there
  * is none, step focus to the adjacent output that way (which may be empty). */
-void w3ld_action_focus_dir (
-	struct w3ld_server *server,
-	enum w3ld_direction direction
+void honey_action_focus_dir (
+	struct honey_server *server,
+	enum honey_direction direction
 ) {
 	if (!server->focused_output)
 		return;
@@ -387,54 +387,54 @@ void w3ld_action_focus_dir (
 			+ server->focused_output->usable.height / 2;
 	}
 
-	struct w3ld_window *best =
+	struct honey_window *best =
 		window_in_direction(server, from_x, from_y, direction, NULL);
 	if (best) {
-		w3ld_focus_window(best);
+		honey_focus_window(best);
 	} else {
-		struct w3ld_output *output =
-			w3ld_output_in_direction(server->focused_output, direction);
+		struct honey_output *output =
+			honey_output_in_direction(server->focused_output, direction);
 		if (output)
-			w3ld_focus_output_active(output);
+			honey_focus_output_active(output);
 	}
-	w3ld_warp_to_focus(server);
+	honey_warp_to_focus(server);
 }
 
 /* Swap the focused window with the nearest tiled window in a direction on the
  * same workspace — spatial reordering, natural in the grid layout. */
-void w3ld_action_swap_dir (
-	struct w3ld_server *server,
-	enum w3ld_direction direction
+void honey_action_swap_dir (
+	struct honey_server *server,
+	enum honey_direction direction
 ) {
-	struct w3ld_window *window = server->focused;
-	if (!window || !w3ld_window_is_tiled(window))
+	struct honey_window *window = server->focused;
+	if (!window || !honey_window_is_tiled(window))
 		return;
-	struct w3ld_window *other = window_in_direction(server,
+	struct honey_window *other = window_in_direction(server,
 			window->geom.x + window->geom.width / 2,
 			window->geom.y + window->geom.height / 2,
 			direction, window->workspace);
 	if (!other)
 		return;
 	list_swap(&window->link, &other->link);
-	w3ld_arrange(server);
-	w3ld_warp_to_focus(server);
+	honey_arrange(server);
+	honey_warp_to_focus(server);
 }
 
-void w3ld_action_move_to_output (
-	struct w3ld_server *server,
-	enum w3ld_direction direction
+void honey_action_move_to_output (
+	struct honey_server *server,
+	enum honey_direction direction
 ) {
 	if (!server->focused)
 		return;
-	struct w3ld_window *window = server->focused;
-	struct w3ld_output *target =
-		w3ld_output_in_direction(window->workspace->output, direction);
+	struct honey_window *window = server->focused;
+	struct honey_output *target =
+		honey_output_in_direction(window->workspace->output, direction);
 	if (!target)
 		return;
 
 	window->workspace = target->active;
 	server->focused_output = target;
-	w3ld_arrange(server);
-	w3ld_focus_window(window);
-	w3ld_warp_to_focus(server);
+	honey_arrange(server);
+	honey_focus_window(window);
+	honey_warp_to_focus(server);
 }

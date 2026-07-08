@@ -9,34 +9,34 @@
 
 #include <wlr/types/wlr_layer_shell_v1.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 static struct wlr_scene_tree *layer_tree (
-	struct w3ld_server *server,
+	struct honey_server *server,
 	enum zwlr_layer_shell_v1_layer layer
 ) {
 	switch (layer) {
 	case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
-		return server->layers[W3LD_LAYER_BACKGROUND];
+		return server->layers[HONEY_LAYER_BACKGROUND];
 	case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
-		return server->layers[W3LD_LAYER_BOTTOM];
+		return server->layers[HONEY_LAYER_BOTTOM];
 	case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
-		return server->layers[W3LD_LAYER_TOP];
+		return server->layers[HONEY_LAYER_TOP];
 	default:
-		return server->layers[W3LD_LAYER_OVERLAY];
+		return server->layers[HONEY_LAYER_OVERLAY];
 	}
 }
 
 /* Recompute the output's usable area: the full box minus each layer surface's
  * exclusive zone (exclusive surfaces first), configuring every surface. */
-void w3ld_layer_arrange (struct w3ld_output *output) {
+void honey_layer_arrange (struct honey_output *output) {
 	struct wlr_box full;
 	wlr_output_layout_get_box(output->server->output_layout,
 			output->wlr_output, &full);
 	struct wlr_box usable = full;
 
 	for (int exclusive = 1; exclusive >= 0; exclusive--) {
-		struct w3ld_layer_surface *layer;
+		struct honey_layer_surface *layer;
 		wl_list_for_each(layer, &output->layer_surfaces, link) {
 			bool has_exclusive =
 				layer->layer_surface->current.exclusive_zone > 0;
@@ -50,14 +50,14 @@ void w3ld_layer_arrange (struct w3ld_output *output) {
 			usable.x, usable.y, usable.width, usable.height);
 }
 
-static void layer_rearrange (struct w3ld_layer_surface *layer) {
-	w3ld_layer_arrange(layer->output);
-	w3ld_arrange(layer->server);
+static void layer_rearrange (struct honey_layer_surface *layer) {
+	honey_layer_arrange(layer->output);
+	honey_arrange(layer->server);
 }
 
 /* Give keyboard focus to an interactive layer surface (a launcher). */
-static void layer_focus (struct w3ld_layer_surface *layer) {
-	struct w3ld_server *server = layer->server;
+static void layer_focus (struct honey_layer_surface *layer) {
+	struct honey_server *server = layer->server;
 	if (layer->layer_surface->current.keyboard_interactive
 			== ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
 		return;
@@ -71,13 +71,13 @@ static void layer_focus (struct w3ld_layer_surface *layer) {
 }
 
 /* Restore focus to the active window when a focused layer surface goes away. */
-static void layer_unfocus (struct w3ld_layer_surface *layer) {
-	struct w3ld_server *server = layer->server;
+static void layer_unfocus (struct honey_layer_surface *layer) {
+	struct honey_server *server = layer->server;
 	if (server->focused_layer != layer)
 		return;
 	server->focused_layer = NULL;
 	if (server->focused_output)
-		w3ld_focus_output_active(server->focused_output);
+		honey_focus_output_active(server->focused_output);
 }
 
 /* ----------------------------------------------------------------- listeners */
@@ -86,7 +86,7 @@ static void layer_map (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_layer_surface *layer = wl_container_of(listener, layer, map);
+	struct honey_layer_surface *layer = wl_container_of(listener, layer, map);
 	DBG("layer surface mapped on %s", layer->output->wlr_output->name);
 	layer_rearrange(layer);
 	layer_focus(layer);
@@ -96,7 +96,7 @@ static void layer_unmap (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_layer_surface *layer = wl_container_of(listener, layer, unmap);
+	struct honey_layer_surface *layer = wl_container_of(listener, layer, unmap);
 	layer_unfocus(layer);
 	layer_rearrange(layer);
 }
@@ -105,7 +105,7 @@ static void layer_commit (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_layer_surface *layer = wl_container_of(listener, layer, commit);
+	struct honey_layer_surface *layer = wl_container_of(listener, layer, commit);
 	wlr_scene_node_reparent(&layer->scene->tree->node,
 			layer_tree(layer->server, layer->layer_surface->current.layer));
 	layer_rearrange(layer);
@@ -115,9 +115,9 @@ static void layer_destroy (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_layer_surface *layer = wl_container_of(listener, layer, destroy);
-	struct w3ld_server *server = layer->server;
-	struct w3ld_output *output = layer->output;
+	struct honey_layer_surface *layer = wl_container_of(listener, layer, destroy);
+	struct honey_server *server = layer->server;
+	struct honey_output *output = layer->output;
 
 	wl_list_remove(&layer->map.link);
 	wl_list_remove(&layer->unmap.link);
@@ -128,15 +128,15 @@ static void layer_destroy (
 	free(layer);
 
 	if (output)
-		w3ld_layer_arrange(output);
-	w3ld_arrange(server);
+		honey_layer_arrange(output);
+	honey_arrange(server);
 }
 
 static void new_layer_surface (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, new_layer_surface);
 	struct wlr_layer_surface_v1 *layer_surface = data;
 
@@ -147,9 +147,9 @@ static void new_layer_surface (
 		}
 		layer_surface->output = server->focused_output->wlr_output;
 	}
-	struct w3ld_output *output = layer_surface->output->data;
+	struct honey_output *output = layer_surface->output->data;
 
-	struct w3ld_layer_surface *layer = calloc(1, sizeof *layer);
+	struct honey_layer_surface *layer = calloc(1, sizeof *layer);
 	layer->server = server;
 	layer->output = output;
 	layer->layer_surface = layer_surface;
@@ -170,8 +170,8 @@ static void new_layer_surface (
 
 /* -------------------------------------------------------------------- setup */
 
-void w3ld_layer_setup (struct w3ld_server *server) {
-	for (int i = 0; i < W3LD_NUM_LAYERS; i++)
+void honey_layer_setup (struct honey_server *server) {
+	for (int i = 0; i < HONEY_NUM_LAYERS; i++)
 		server->layers[i] = wlr_scene_tree_create(&server->scene->tree);
 
 	struct wlr_layer_shell_v1 *shell =

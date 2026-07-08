@@ -22,11 +22,11 @@
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/xwayland/xwayland.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* --------------------------------------------------------------------- spawn */
 
-void w3ld_spawn (const char *command) {
+void honey_spawn (const char *command) {
 	if (!command || !*command)
 		return;
 	pid_t pid = fork();
@@ -47,7 +47,7 @@ static void keyboard_modifiers (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_keyboard *keyboard =
+	struct honey_keyboard *keyboard =
 		wl_container_of(listener, keyboard, modifiers);
 	wlr_seat_set_keyboard(keyboard->server->seat, keyboard->wlr_keyboard);
 	wlr_seat_keyboard_notify_modifiers(keyboard->server->seat,
@@ -58,8 +58,8 @@ static void keyboard_key (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_keyboard *keyboard = wl_container_of(listener, keyboard, key);
-	struct w3ld_server *server = keyboard->server;
+	struct honey_keyboard *keyboard = wl_container_of(listener, keyboard, key);
+	struct honey_server *server = keyboard->server;
 	struct wlr_keyboard *wlr_keyboard = keyboard->wlr_keyboard;
 	struct wlr_keyboard_key_event *event = data;
 
@@ -68,7 +68,7 @@ static void keyboard_key (
 
 	bool handled = false;
 	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED
-			&& !w3ld_shortcuts_inhibited(server)) {
+			&& !honey_shortcuts_inhibited(server)) {
 		/* Match at level 0 so shifted binds resolve to the base symbol
 		 * (Super+Shift+1 -> 1, not exclam). */
 		xkb_layout_index_t layout =
@@ -77,7 +77,7 @@ static void keyboard_key (
 		int count = xkb_keymap_key_get_syms_by_level(wlr_keyboard->keymap,
 				keycode, layout, 0, &syms);
 		for (int i = 0; i < count; i++) {
-			if (w3ld_binding_run(server, modifiers, syms[i])) {
+			if (honey_binding_run(server, modifiers, syms[i])) {
 				handled = true;
 				break;
 			}
@@ -91,7 +91,7 @@ static void keyboard_key (
 	}
 }
 
-static void update_capabilities (struct w3ld_server *server) {
+static void update_capabilities (struct honey_server *server) {
 	uint32_t capabilities = WL_SEAT_CAPABILITY_POINTER;
 	if (!wl_list_empty(&server->keyboards))
 		capabilities |= WL_SEAT_CAPABILITY_KEYBOARD;
@@ -102,7 +102,7 @@ static void keyboard_destroy (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_keyboard *keyboard =
+	struct honey_keyboard *keyboard =
 		wl_container_of(listener, keyboard, destroy);
 	wl_list_remove(&keyboard->modifiers.link);
 	wl_list_remove(&keyboard->key.link);
@@ -112,16 +112,16 @@ static void keyboard_destroy (
 	free(keyboard);
 }
 
-void w3ld_seat_new_keyboard (
-	struct w3ld_server *server,
+void honey_seat_new_keyboard (
+	struct honey_server *server,
 	struct wlr_input_device *device
 ) {
 	struct wlr_keyboard *wlr_keyboard = wlr_keyboard_from_input_device(device);
-	struct w3ld_keyboard *keyboard = calloc(1, sizeof *keyboard);
+	struct honey_keyboard *keyboard = calloc(1, sizeof *keyboard);
 	keyboard->server = server;
 	keyboard->wlr_keyboard = wlr_keyboard;
 
-	w3ld_input_apply_keyboard(server, wlr_keyboard);
+	honey_input_apply_keyboard(server, wlr_keyboard);
 
 	keyboard->modifiers.notify = keyboard_modifiers;
 	wl_signal_add(&wlr_keyboard->events.modifiers, &keyboard->modifiers);
@@ -138,7 +138,7 @@ void w3ld_seat_new_keyboard (
 
 /* Warp the cursor to the focused window (or focused output) center on
  * keyboard-driven focus moves, when mouse-follows-focus is enabled. */
-void w3ld_warp_to_focus (struct w3ld_server *server) {
+void honey_warp_to_focus (struct honey_server *server) {
 	if (!server->config.mouse_follows_focus)
 		return;
 	int x, y;
@@ -155,11 +155,11 @@ void w3ld_warp_to_focus (struct w3ld_server *server) {
 	}
 	wlr_cursor_warp(server->cursor, NULL, x, y);
 	DBG("warp to %d,%d (%s)", x, y,
-			server->focused ? w3ld_window_app_id(server->focused) : "output");
+			server->focused ? honey_window_app_id(server->focused) : "output");
 }
 
 /* Climb the scene tree to the window that owns a node, or NULL. */
-static struct w3ld_window *window_from_node (struct wlr_scene_node *node) {
+static struct honey_window *window_from_node (struct wlr_scene_node *node) {
 	while (node) {
 		if (node->data)
 			return node->data;
@@ -171,7 +171,7 @@ static struct w3ld_window *window_from_node (struct wlr_scene_node *node) {
 /* ------------------------------------------------------------- interactive op */
 
 /* Held Logo modifier on any keyboard of the seat. */
-static bool super_held (struct w3ld_server *server) {
+static bool super_held (struct honey_server *server) {
 	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
 	return keyboard
 		&& (wlr_keyboard_get_modifiers(keyboard) & WLR_MODIFIER_LOGO);
@@ -179,19 +179,19 @@ static bool super_held (struct w3ld_server *server) {
 
 /* Begin a move/resize grab; a tiled window floats in place first. */
 static void op_begin (
-	struct w3ld_server *server,
-	struct w3ld_window *window,
+	struct honey_server *server,
+	struct honey_window *window,
 	int op,
 	uint32_t edges
 ) {
 	if (window->fullscreen || window->maximized)
 		return;
 
-	server->op_was_tiled = w3ld_window_is_tiled(window);
+	server->op_was_tiled = honey_window_is_tiled(window);
 	if (server->op_was_tiled) {
 		window->floating = true;
 		window->float_geom = window->geom; /* float in place, no jump */
-		w3ld_window_update_layer(window);
+		honey_window_update_layer(window);
 	}
 
 	server->op = op;
@@ -200,29 +200,29 @@ static void op_begin (
 	server->op_start_y = server->cursor->y;
 	server->op_geom = window->float_geom;
 	server->op_edges = edges;
-	w3ld_focus_window(window);
+	honey_focus_window(window);
 	wlr_seat_pointer_notify_clear_focus(server->seat);
 	wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager,
-			op == W3LD_OP_MOVE ? "grabbing" : "se-resize");
+			op == HONEY_OP_MOVE ? "grabbing" : "se-resize");
 }
 
 /* Re-tile a dropped window at the cursor: insert it next to the tiled window
  * under the cursor (or at the tail) on the output the cursor is over. */
 static void drop_at_cursor (
-	struct w3ld_server *server,
-	struct w3ld_window *window
+	struct honey_server *server,
+	struct honey_window *window
 ) {
-	struct w3ld_output *output = w3ld_output_at(server,
+	struct honey_output *output = honey_output_at(server,
 			server->cursor->x, server->cursor->y);
 	if (output)
 		window->workspace = output->active;
 
-	struct w3ld_window *target = NULL;
-	struct w3ld_window *other;
+	struct honey_window *target = NULL;
+	struct honey_window *other;
 	wl_list_for_each(other, &server->windows, link) {
 		if (other == window || !other->mapped
 				|| other->workspace != window->workspace
-				|| !w3ld_window_is_tiled(other))
+				|| !honey_window_is_tiled(other))
 			continue;
 		if (server->cursor->x >= other->geom.x
 				&& server->cursor->x < other->geom.x + other->geom.width
@@ -234,7 +234,7 @@ static void drop_at_cursor (
 	}
 
 	window->floating = false;
-	w3ld_window_update_layer(window);
+	honey_window_update_layer(window);
 	wl_list_remove(&window->link);
 	if (target) {
 		/* before the target when the cursor is in its first half */
@@ -247,10 +247,10 @@ static void drop_at_cursor (
 	}
 }
 
-static void op_end (struct w3ld_server *server) {
-	struct w3ld_window *window = server->op_window;
-	bool was_move = server->op == W3LD_OP_MOVE;
-	server->op = W3LD_OP_NONE;
+static void op_end (struct honey_server *server) {
+	struct honey_window *window = server->op_window;
+	bool was_move = server->op == HONEY_OP_MOVE;
+	server->op = HONEY_OP_NONE;
 	server->op_window = NULL;
 
 	if (window && was_move && server->op_was_tiled
@@ -258,15 +258,15 @@ static void op_end (struct w3ld_server *server) {
 		drop_at_cursor(server, window);
 
 	wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager, "default");
-	w3ld_arrange(server);
+	honey_arrange(server);
 }
 
-static void op_motion (struct w3ld_server *server) {
-	struct w3ld_window *window = server->op_window;
+static void op_motion (struct honey_server *server) {
+	struct honey_window *window = server->op_window;
 	int dx = (int)(server->cursor->x - server->op_start_x);
 	int dy = (int)(server->cursor->y - server->op_start_y);
 
-	if (server->op == W3LD_OP_MOVE) {
+	if (server->op == HONEY_OP_MOVE) {
 		window->float_geom.x = server->op_geom.x + dx;
 		window->float_geom.y = server->op_geom.y + dy;
 	} else {
@@ -289,12 +289,12 @@ static void op_motion (struct w3ld_server *server) {
 			geom.height = 50;
 		window->float_geom = geom;
 	}
-	w3ld_arrange(server);
+	honey_arrange(server);
 }
 
 /* When a border rect is grabbed, which edge does it resize? */
 static uint32_t border_edge (
-	struct w3ld_window *window,
+	struct honey_window *window,
 	struct wlr_scene_node *node
 ) {
 	if (node == &window->border[0]->node)
@@ -310,8 +310,8 @@ static uint32_t border_edge (
 
 /* Resize edges from the grab point's quadrant within the window. */
 static uint32_t quadrant_edges (
-	struct w3ld_server *server,
-	struct w3ld_window *window
+	struct honey_server *server,
+	struct honey_window *window
 ) {
 	struct wlr_box *geom = window->floating ? &window->float_geom
 		: &window->geom;
@@ -326,12 +326,12 @@ static uint32_t quadrant_edges (
 /* Forward pointer focus to the surface under the cursor; with follow-mouse on,
  * also move keyboard focus to the window (or output) under the cursor. */
 static void pointer_focus (
-	struct w3ld_server *server,
+	struct honey_server *server,
 	uint32_t time_msec
 ) {
 	double sx, sy;
 	struct wlr_surface *surface = NULL;
-	struct w3ld_window *window = NULL;
+	struct honey_window *window = NULL;
 	struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node,
 			server->cursor->x, server->cursor->y, &sx, &sy);
 	if (node && node->type == WLR_SCENE_NODE_BUFFER) {
@@ -345,9 +345,9 @@ static void pointer_focus (
 
 	if (server->config.follow_mouse) {
 		if (window) {
-			w3ld_focus_window(window);
+			honey_focus_window(window);
 		} else {
-			struct w3ld_output *output = w3ld_output_at(server,
+			struct honey_output *output = honey_output_at(server,
 					server->cursor->x, server->cursor->y);
 			if (output)
 				server->focused_output = output;
@@ -359,7 +359,7 @@ static void pointer_focus (
 		 * coordinate space; the scene reports logical coords, Xwayland expects
 		 * its own. Remove this block to revert. */
 		if (wlr_xwayland_surface_try_from_wlr_surface(surface)) {
-			double scale = w3ld_xwayland_scale_at(server, server->cursor->x,
+			double scale = honey_xwayland_scale_at(server, server->cursor->x,
 					server->cursor->y);
 			sx *= scale;
 			sy *= scale;
@@ -371,14 +371,14 @@ static void pointer_focus (
 				"default");
 		wlr_seat_pointer_notify_clear_focus(server->seat);
 	}
-	w3ld_constraint_check(server, surface);
+	honey_constraint_check(server, surface);
 }
 
 static void cursor_motion (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server = wl_container_of(listener, server, cursor_motion);
+	struct honey_server *server = wl_container_of(listener, server, cursor_motion);
 	struct wlr_pointer_motion_event *event = data;
 
 	wlr_relative_pointer_manager_v1_send_relative_motion(
@@ -393,7 +393,7 @@ static void cursor_motion (
 
 	wlr_cursor_move(server->cursor, &event->pointer->base,
 			event->delta_x, event->delta_y);
-	if (server->op != W3LD_OP_NONE) {
+	if (server->op != HONEY_OP_NONE) {
 		op_motion(server);
 		return;
 	}
@@ -404,12 +404,12 @@ static void cursor_motion_absolute (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, cursor_motion_absolute);
 	struct wlr_pointer_motion_absolute_event *event = data;
 	wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
 			event->x, event->y);
-	if (server->op != W3LD_OP_NONE) {
+	if (server->op != HONEY_OP_NONE) {
 		op_motion(server);
 		return;
 	}
@@ -420,11 +420,11 @@ static void cursor_button (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server = wl_container_of(listener, server, cursor_button);
+	struct honey_server *server = wl_container_of(listener, server, cursor_button);
 	struct wlr_pointer_button_event *event = data;
 
 	if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-		if (server->op != W3LD_OP_NONE) {
+		if (server->op != HONEY_OP_NONE) {
 			op_end(server);
 			return;
 		}
@@ -436,15 +436,15 @@ static void cursor_button (
 	double sx, sy;
 	struct wlr_scene_node *node = wlr_scene_node_at(&server->scene->tree.node,
 			server->cursor->x, server->cursor->y, &sx, &sy);
-	struct w3ld_window *window = node ? window_from_node(node) : NULL;
+	struct honey_window *window = node ? window_from_node(node) : NULL;
 
 	if (window && super_held(server)) {
 		if (event->button == BTN_LEFT) {
-			op_begin(server, window, W3LD_OP_MOVE, 0);
+			op_begin(server, window, HONEY_OP_MOVE, 0);
 			return;
 		}
 		if (event->button == BTN_RIGHT) {
-			op_begin(server, window, W3LD_OP_RESIZE,
+			op_begin(server, window, HONEY_OP_RESIZE,
 					quadrant_edges(server, window));
 			return;
 		}
@@ -456,13 +456,13 @@ static void cursor_button (
 			&& node->type == WLR_SCENE_NODE_RECT) {
 		uint32_t edge = border_edge(window, node);
 		if (edge) {
-			op_begin(server, window, W3LD_OP_RESIZE, edge);
+			op_begin(server, window, HONEY_OP_RESIZE, edge);
 			return;
 		}
 	}
 
 	if (window)
-		w3ld_focus_window(window); /* click-to-focus */
+		honey_focus_window(window); /* click-to-focus */
 	wlr_seat_pointer_notify_button(server->seat, event->time_msec,
 			event->button, event->state);
 }
@@ -471,14 +471,14 @@ static void cursor_axis (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server = wl_container_of(listener, server, cursor_axis);
+	struct honey_server *server = wl_container_of(listener, server, cursor_axis);
 	struct wlr_pointer_axis_event *event = data;
 
 	/* super+scroll cycles the focused output's workspaces. */
 	if (server->config.scroll_workspace && super_held(server)
 			&& event->orientation == WL_POINTER_AXIS_VERTICAL_SCROLL
 			&& event->delta != 0) {
-		w3ld_action_workspace_cycle(server, event->delta > 0 ? +1 : -1);
+		honey_action_workspace_cycle(server, event->delta > 0 ? +1 : -1);
 		return;
 	}
 
@@ -491,7 +491,7 @@ static void cursor_frame (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server = wl_container_of(listener, server, cursor_frame);
+	struct honey_server *server = wl_container_of(listener, server, cursor_frame);
 	wlr_seat_pointer_notify_frame(server->seat);
 }
 
@@ -501,16 +501,16 @@ static void new_input (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server = wl_container_of(listener, server, new_input);
+	struct honey_server *server = wl_container_of(listener, server, new_input);
 	struct wlr_input_device *device = data;
 
 	switch (device->type) {
 	case WLR_INPUT_DEVICE_KEYBOARD:
-		w3ld_seat_new_keyboard(server, device);
+		honey_seat_new_keyboard(server, device);
 		break;
 	case WLR_INPUT_DEVICE_POINTER:
 		wlr_cursor_attach_input_device(server->cursor, device);
-		w3ld_input_add_device(server, device);
+		honey_input_add_device(server, device);
 		break;
 	default:
 		break;
@@ -524,7 +524,7 @@ static void request_cursor (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, request_cursor);
 	struct wlr_seat_pointer_request_set_cursor_event *event = data;
 	if (server->seat->pointer_state.focused_client == event->seat_client) {
@@ -537,7 +537,7 @@ static void request_set_selection (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, request_set_selection);
 	struct wlr_seat_request_set_selection_event *event = data;
 	wlr_seat_set_selection(server->seat, event->source, event->serial);
@@ -545,7 +545,7 @@ static void request_set_selection (
 
 /* -------------------------------------------------------------------- setup */
 
-void w3ld_seat_setup (struct w3ld_server *server) {
+void honey_seat_setup (struct honey_server *server) {
 	wl_list_init(&server->keyboards);
 
 	server->cursor = wlr_cursor_create();

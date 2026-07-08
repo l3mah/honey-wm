@@ -11,7 +11,7 @@
 
 #include <wlr/types/wlr_keyboard.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* --------------------------------------------------------------- combo parse */
 
@@ -58,8 +58,8 @@ static bool parse_combo (
 
 /* ------------------------------------------------------------------ keybinds */
 
-bool w3ld_binding_add (
-	struct w3ld_server *server,
+bool honey_binding_add (
+	struct honey_server *server,
 	const char *combo,
 	const char *action
 ) {
@@ -68,7 +68,7 @@ bool w3ld_binding_add (
 	if (!parse_combo(combo, &modifiers, &sym))
 		return false;
 
-	struct w3ld_keybind *keybind;
+	struct honey_keybind *keybind;
 	wl_list_for_each(keybind, &server->keybinds, link) {
 		if (keybind->modifiers == modifiers && keybind->sym == sym) {
 			free(keybind->action);
@@ -85,8 +85,8 @@ bool w3ld_binding_add (
 	return true;
 }
 
-bool w3ld_binding_remove (
-	struct w3ld_server *server,
+bool honey_binding_remove (
+	struct honey_server *server,
 	const char *combo
 ) {
 	uint32_t modifiers;
@@ -94,7 +94,7 @@ bool w3ld_binding_remove (
 	if (!parse_combo(combo, &modifiers, &sym))
 		return false;
 
-	struct w3ld_keybind *keybind;
+	struct honey_keybind *keybind;
 	wl_list_for_each(keybind, &server->keybinds, link) {
 		if (keybind->modifiers == modifiers && keybind->sym == sym) {
 			wl_list_remove(&keybind->link);
@@ -106,17 +106,17 @@ bool w3ld_binding_remove (
 	return false;
 }
 
-bool w3ld_binding_run (
-	struct w3ld_server *server,
+bool honey_binding_run (
+	struct honey_server *server,
 	uint32_t modifiers,
 	xkb_keysym_t sym
 ) {
 	uint32_t relevant = modifiers & (WLR_MODIFIER_LOGO | WLR_MODIFIER_SHIFT
 			| WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT);
-	struct w3ld_keybind *keybind;
+	struct honey_keybind *keybind;
 	wl_list_for_each(keybind, &server->keybinds, link) {
 		if (keybind->sym == sym && keybind->modifiers == relevant) {
-			w3ld_action_run(server, keybind->action);
+			honey_action_run(server, keybind->action);
 			return true;
 		}
 	}
@@ -125,20 +125,20 @@ bool w3ld_binding_run (
 
 /* ------------------------------------------------------------- action string */
 
-static enum w3ld_direction parse_direction (const char *arg) {
+static enum honey_direction parse_direction (const char *arg) {
 	if (arg) {
 		if (!strcasecmp(arg, "right"))
-			return W3LD_DIR_RIGHT;
+			return HONEY_DIR_RIGHT;
 		if (!strcasecmp(arg, "up"))
-			return W3LD_DIR_UP;
+			return HONEY_DIR_UP;
 		if (!strcasecmp(arg, "down"))
-			return W3LD_DIR_DOWN;
+			return HONEY_DIR_DOWN;
 	}
-	return W3LD_DIR_LEFT;
+	return HONEY_DIR_LEFT;
 }
 
-bool w3ld_action_run (
-	struct w3ld_server *server,
+bool honey_action_run (
+	struct honey_server *server,
 	const char *action
 ) {
 	char buffer[256];
@@ -159,65 +159,65 @@ bool w3ld_action_run (
 
 	if (!strcmp(verb, "spawn")) {
 		if (arg)
-			w3ld_spawn(arg);
+			honey_spawn(arg);
 	} else if (!strcmp(verb, "close")) {
-		w3ld_action_close(server);
+		honey_action_close(server);
 	} else if (!strcmp(verb, "toggle-float")) {
-		w3ld_action_toggle_float(server);
+		honey_action_toggle_float(server);
 	} else if (!strcmp(verb, "fullscreen")) {
-		w3ld_action_fullscreen(server);
+		honey_action_fullscreen(server);
 	} else if (!strcmp(verb, "maximize")) {
-		w3ld_action_maximize(server);
+		honey_action_maximize(server);
 	} else if (!strcmp(verb, "fake-fullscreen")) {
-		w3ld_action_fake_fullscreen(server);
+		honey_action_fake_fullscreen(server);
 	} else if (!strcmp(verb, "exit")) {
 		wl_display_terminate(server->display);
 	} else if (!strcmp(verb, "focus-next")) {
-		w3ld_action_focus(server, +1);
+		honey_action_focus(server, +1);
 	} else if (!strcmp(verb, "focus-prev")) {
-		w3ld_action_focus(server, -1);
+		honey_action_focus(server, -1);
 	} else if (!strcmp(verb, "swap-next")) {
-		w3ld_action_swap(server, +1);
+		honey_action_swap(server, +1);
 	} else if (!strcmp(verb, "swap-prev")) {
-		w3ld_action_swap(server, -1);
+		honey_action_swap(server, -1);
 	} else if (!strcmp(verb, "swap-master")) {
-		w3ld_action_swap_master(server);
+		honey_action_swap_master(server);
 	} else if (!strcmp(verb, "swap-dir")) {
-		w3ld_action_swap_dir(server, parse_direction(arg));
+		honey_action_swap_dir(server, parse_direction(arg));
 	} else if (!strcmp(verb, "master-mfact")) {
 		if (arg)
-			w3ld_action_mfact(server, atof(arg));
+			honey_action_mfact(server, atof(arg));
 	} else if (!strcmp(verb, "master-nmaster")) {
 		if (arg)
-			w3ld_action_nmaster(server, atoi(arg));
+			honey_action_nmaster(server, atoi(arg));
 	} else if (!strcmp(verb, "master-orientation")) {
 		if (arg)
-			w3ld_config_set(server, "master-orientation", arg);
+			honey_config_set(server, "master-orientation", arg);
 	} else if (!strcmp(verb, "master-orientationcycle")) {
-		w3ld_action_orientation_cycle(server);
+		honey_action_orientation_cycle(server);
 	} else if (!strcmp(verb, "workspace")) {
 		if (arg)
-			w3ld_action_workspace(server, atoi(arg));
+			honey_action_workspace(server, atoi(arg));
 	} else if (!strcmp(verb, "move-to-workspace")) {
 		if (arg)
-			w3ld_action_move_to_workspace(server, atoi(arg));
+			honey_action_move_to_workspace(server, atoi(arg));
 	} else if (!strcmp(verb, "workspace-back")) {
-		w3ld_action_workspace_back(server);
+		honey_action_workspace_back(server);
 	} else if (!strcmp(verb, "workspace-next")) {
-		w3ld_action_workspace_cycle(server, +1);
+		honey_action_workspace_cycle(server, +1);
 	} else if (!strcmp(verb, "workspace-prev")) {
-		w3ld_action_workspace_cycle(server, -1);
+		honey_action_workspace_cycle(server, -1);
 	} else if (!strcmp(verb, "focus-dir")) {
-		w3ld_action_focus_dir(server, parse_direction(arg));
+		honey_action_focus_dir(server, parse_direction(arg));
 	} else if (!strcmp(verb, "focus-output")) {
-		struct w3ld_output *output =
-			arg ? w3ld_output_by_name(server, arg) : NULL;
+		struct honey_output *output =
+			arg ? honey_output_by_name(server, arg) : NULL;
 		if (!output)
 			return false;
-		w3ld_focus_output_active(output);
-		w3ld_warp_to_focus(server);
+		honey_focus_output_active(output);
+		honey_warp_to_focus(server);
 	} else if (!strcmp(verb, "move-to-output")) {
-		w3ld_action_move_to_output(server, parse_direction(arg));
+		honey_action_move_to_output(server, parse_direction(arg));
 	} else {
 		LOG("unknown action: %s", verb);
 		return false;
@@ -227,6 +227,6 @@ bool w3ld_action_run (
 
 /* -------------------------------------------------------------------- setup */
 
-void w3ld_binding_setup (struct w3ld_server *server) {
+void honey_binding_setup (struct honey_server *server) {
 	wl_list_init(&server->keybinds);
 }

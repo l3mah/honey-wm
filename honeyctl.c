@@ -1,4 +1,4 @@
-/* w3ldctl — control client for w3ld.
+/* honeyctl — control client for honey.
  *
  * Joins its arguments into one command, sends it to the compositor's control
  * socket, and prints the reply. Silent on "ok"; prints pong / query results /
@@ -16,31 +16,31 @@ int main (
 	char *argv[]
 ) {
 	if (argc < 2) {
-		fprintf(stderr, "usage: w3ldctl <command> [args...]\n");
+		fprintf(stderr, "usage: honeyctl <command> [args...]\n");
 		return 2;
 	}
 
 	const char *runtime = getenv("XDG_RUNTIME_DIR");
 	const char *display = getenv("WAYLAND_DISPLAY");
 	if (!runtime || !display) {
-		fprintf(stderr, "w3ldctl: XDG_RUNTIME_DIR or WAYLAND_DISPLAY unset\n");
+		fprintf(stderr, "honeyctl: XDG_RUNTIME_DIR or WAYLAND_DISPLAY unset\n");
 		return 2;
 	}
 
 	int fd = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (fd < 0) {
-		perror("w3ldctl: socket");
+		perror("honeyctl: socket");
 		return 2;
 	}
 	struct sockaddr_un addr = { .sun_family = AF_UNIX };
 	int written = snprintf(addr.sun_path, sizeof addr.sun_path,
-			"%s/w3ld-%s.sock", runtime, display);
+			"%s/honey-%s.sock", runtime, display);
 	if (written < 0 || (size_t)written >= sizeof addr.sun_path) {
-		fprintf(stderr, "w3ldctl: socket path too long\n");
+		fprintf(stderr, "honeyctl: socket path too long\n");
 		return 2;
 	}
 	if (connect(fd, (struct sockaddr *)&addr, sizeof addr) < 0) {
-		perror("w3ldctl: connect");
+		perror("honeyctl: connect");
 		return 2;
 	}
 
@@ -50,14 +50,14 @@ int main (
 		int written = snprintf(message + length, sizeof message - length,
 				"%s%s", i > 1 ? " " : "", argv[i]);
 		if (written < 0 || (size_t)written >= sizeof message - length) {
-			fprintf(stderr, "w3ldctl: command too long\n");
+			fprintf(stderr, "honeyctl: command too long\n");
 			return 2;
 		}
 		length += written;
 	}
 	message[length++] = '\n';
 	if (write(fd, message, length) < 0) {
-		perror("w3ldctl: write");
+		perror("honeyctl: write");
 		return 2;
 	}
 

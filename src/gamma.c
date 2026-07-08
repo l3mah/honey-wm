@@ -16,7 +16,7 @@
 #include <wlr/render/color.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 static double clamp01 (double value) {
 	return value < 0.0 ? 0.0 : value > 1.0 ? 1.0 : value;
@@ -45,8 +45,8 @@ static void temperature_rgb (
 
 /* Rebuild this output's transform for the server's current gamma target, sized
  * to the CRTC's gamma ramp. */
-void w3ld_gamma_update_output (struct w3ld_output *output) {
-	struct w3ld_server *server = output->server;
+void honey_gamma_update_output (struct honey_output *output) {
+	struct honey_server *server = output->server;
 
 	if (output->gamma_transform) {
 		wlr_color_transform_unref(output->gamma_transform);
@@ -89,24 +89,24 @@ void w3ld_gamma_update_output (struct w3ld_output *output) {
 }
 
 /* temperature <= 0 resets to neutral (no transform). */
-void w3ld_gamma_set (
-	struct w3ld_server *server,
+void honey_gamma_set (
+	struct honey_server *server,
 	double temperature,
 	double brightness
 ) {
 	server->gamma_temperature = temperature;
 	server->gamma_brightness = brightness;
 
-	struct w3ld_output *output;
+	struct honey_output *output;
 	wl_list_for_each(output, &server->outputs, link)
-		w3ld_gamma_update_output(output);
+		honey_gamma_update_output(output);
 
 	/* One source of truth: any gamma change (scroll, hotkey, direct command)
 	 * flows through here, so subscribers stay in sync however it was driven. */
-	w3ld_status_broadcast_gamma(server);
+	honey_status_broadcast_gamma(server);
 }
 
-void w3ld_gamma_setup (struct w3ld_server *server) {
+void honey_gamma_setup (struct honey_server *server) {
 	server->gamma_brightness = 1.0;
 	server->gamma_brightness_min = 0.05;
 	server->gamma_brightness_max = 1.0;

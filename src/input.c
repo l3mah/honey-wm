@@ -15,12 +15,12 @@
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* ------------------------------------------------------------------- keyboard */
 
-void w3ld_input_apply_keyboard (
-	struct w3ld_server *server,
+void honey_input_apply_keyboard (
+	struct honey_server *server,
 	struct wlr_keyboard *keyboard
 ) {
 	struct xkb_rule_names names = {
@@ -46,8 +46,8 @@ static char *dup_or_null (const char *value) {
 	return value ? strdup(value) : NULL;
 }
 
-bool w3ld_kb_layout (
-	struct w3ld_server *server,
+bool honey_kb_layout (
+	struct honey_server *server,
 	const char *layout,
 	const char *variant,
 	const char *model,
@@ -78,14 +78,14 @@ bool w3ld_kb_layout (
 	server->kb_options = dup_or_null(options);
 	server->kb_rules = dup_or_null(rules);
 
-	struct w3ld_keyboard *keyboard;
+	struct honey_keyboard *keyboard;
 	wl_list_for_each(keyboard, &server->keyboards, link)
-		w3ld_input_apply_keyboard(server, keyboard->wlr_keyboard);
+		honey_input_apply_keyboard(server, keyboard->wlr_keyboard);
 	return true;
 }
 
-bool w3ld_kb_repeat (
-	struct w3ld_server *server,
+bool honey_kb_repeat (
+	struct honey_server *server,
 	int rate,
 	int delay
 ) {
@@ -94,7 +94,7 @@ bool w3ld_kb_repeat (
 	server->kb_repeat_rate = rate;
 	server->kb_repeat_delay = delay;
 
-	struct w3ld_keyboard *keyboard;
+	struct honey_keyboard *keyboard;
 	wl_list_for_each(keyboard, &server->keyboards, link)
 		wlr_keyboard_set_repeat_info(keyboard->wlr_keyboard, rate, delay);
 	return true;
@@ -159,7 +159,7 @@ static bool apply_option (
 }
 
 static void configure_device (
-	struct w3ld_server *server,
+	struct honey_server *server,
 	struct wlr_input_device *input_device
 ) {
 	if (!wlr_input_device_is_libinput(input_device))
@@ -167,7 +167,7 @@ static void configure_device (
 	struct libinput_device *device =
 		wlr_libinput_get_device_handle(input_device);
 
-	struct w3ld_input_rule *rule;
+	struct honey_input_rule *rule;
 	wl_list_for_each(rule, &server->input_rules, link) {
 		if (strcmp(rule->device, "*") != 0
 				&& !strcasestr(input_device->name, rule->device))
@@ -182,18 +182,18 @@ static void input_device_destroy (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_input_device *device =
+	struct honey_input_device *device =
 		wl_container_of(listener, device, destroy);
 	wl_list_remove(&device->destroy.link);
 	wl_list_remove(&device->link);
 	free(device);
 }
 
-void w3ld_input_add_device (
-	struct w3ld_server *server,
+void honey_input_add_device (
+	struct honey_server *server,
 	struct wlr_input_device *input_device
 ) {
-	struct w3ld_input_device *device = calloc(1, sizeof *device);
+	struct honey_input_device *device = calloc(1, sizeof *device);
 	device->server = server;
 	device->device = input_device;
 	device->destroy.notify = input_device_destroy;
@@ -203,8 +203,8 @@ void w3ld_input_add_device (
 	configure_device(server, input_device);
 }
 
-bool w3ld_input_rule_add (
-	struct w3ld_server *server,
+bool honey_input_rule_add (
+	struct honey_server *server,
 	const char *device,
 	const char *option,
 	const char *value
@@ -225,7 +225,7 @@ bool w3ld_input_rule_add (
 		return false;
 
 	/* Replace an existing rule with the same device + option. */
-	struct w3ld_input_rule *rule;
+	struct honey_input_rule *rule;
 	wl_list_for_each(rule, &server->input_rules, link) {
 		if (!strcmp(rule->device, device) && !strcmp(rule->option, option)) {
 			free(rule->value);
@@ -240,7 +240,7 @@ bool w3ld_input_rule_add (
 	wl_list_insert(&server->input_rules, &rule->link);
 
 apply:;
-	struct w3ld_input_device *tracked;
+	struct honey_input_device *tracked;
 	wl_list_for_each(tracked, &server->input_devices, link)
 		configure_device(server, tracked->device);
 	return true;
@@ -248,7 +248,7 @@ apply:;
 
 /* -------------------------------------------------------------------- setup */
 
-void w3ld_input_setup (struct w3ld_server *server) {
+void honey_input_setup (struct honey_server *server) {
 	wl_list_init(&server->input_rules);
 	wl_list_init(&server->input_devices);
 	server->kb_repeat_rate = 25;

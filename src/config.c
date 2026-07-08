@@ -1,6 +1,6 @@
 /* Configuration: defaults and the `set` command.
  *
- * Settings live in a single w3ld_config on the server; `set <key> <value>`
+ * Settings live in a single honey_config on the server; `set <key> <value>`
  * changes one and re-arranges. Colors are 0xRRGGBBAA. Per-workspace overrides
  * (`set-ws`) live on the workspace and win over these globals.
  */
@@ -9,13 +9,13 @@
 #include <string.h>
 #include <strings.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
-void w3ld_config_defaults (struct w3ld_config *config) {
-	config->layout = w3ld_layout_by_name("master");
+void honey_config_defaults (struct honey_config *config) {
+	config->layout = honey_layout_by_name("master");
 	config->master_mfact = 0.55;
 	config->master_nmaster = 1;
-	config->master_orientation = W3LD_ORIENT_LEFT;
+	config->master_orientation = HONEY_ORIENT_LEFT;
 	config->spiral_ratio = 0.5;
 	config->spiral_horizontal = true;
 	config->grid_columns = 0; /* auto */
@@ -57,18 +57,18 @@ static uint32_t parse_color (const char *value) {
 	return (uint32_t)strtoul(value, NULL, 16);
 }
 
-bool w3ld_parse_orientation (
+bool honey_parse_orientation (
 	const char *value,
-	enum w3ld_orientation *out
+	enum honey_orientation *out
 ) {
 	if (!strcasecmp(value, "left"))
-		*out = W3LD_ORIENT_LEFT;
+		*out = HONEY_ORIENT_LEFT;
 	else if (!strcasecmp(value, "right"))
-		*out = W3LD_ORIENT_RIGHT;
+		*out = HONEY_ORIENT_RIGHT;
 	else if (!strcasecmp(value, "top"))
-		*out = W3LD_ORIENT_TOP;
+		*out = HONEY_ORIENT_TOP;
 	else if (!strcasecmp(value, "bottom"))
-		*out = W3LD_ORIENT_BOTTOM;
+		*out = HONEY_ORIENT_BOTTOM;
 	else
 		return false;
 	return true;
@@ -76,19 +76,19 @@ bool w3ld_parse_orientation (
 
 /* --------------------------------------------------------------------- set */
 
-bool w3ld_config_set (
-	struct w3ld_server *server,
+bool honey_config_set (
+	struct honey_server *server,
 	const char *key,
 	const char *value
 ) {
-	struct w3ld_config *config = &server->config;
+	struct honey_config *config = &server->config;
 
 	if (!strcmp(key, "master-mfact")) {
 		config->master_mfact = atof(value);
 	} else if (!strcmp(key, "master-nmaster")) {
 		config->master_nmaster = atoi(value);
 	} else if (!strcmp(key, "master-orientation")) {
-		if (!w3ld_parse_orientation(value, &config->master_orientation))
+		if (!honey_parse_orientation(value, &config->master_orientation))
 			return false;
 	} else if (!strcmp(key, "gaps-in")) {
 		config->gaps_in = atoi(value);
@@ -151,7 +151,7 @@ bool w3ld_config_set (
 			config->xwayland_scale = scale;
 			config->xwayland_scale_auto = false;
 		}
-		w3ld_xdg_output_update(server);
+		honey_xdg_output_update(server);
 	} else if (!strcmp(key, "cursor-theme") || !strcmp(key, "cursor-size")) {
 		if (!strcmp(key, "cursor-theme")) {
 			free(server->cursor_theme);
@@ -170,7 +170,7 @@ bool w3ld_config_set (
 		wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager,
 				"default");
 	} else if (!strcmp(key, "layout")) {
-		const struct w3ld_layout *layout = w3ld_layout_by_name(value);
+		const struct honey_layout *layout = honey_layout_by_name(value);
 		if (!layout)
 			return false;
 		config->layout = layout;
@@ -192,28 +192,28 @@ bool w3ld_config_set (
 		return false;
 	}
 
-	w3ld_arrange(server);
+	honey_arrange(server);
 	return true;
 }
 
 /* --------------------------------------------------------------------- get */
 
-static const char *orientation_name (enum w3ld_orientation orientation) {
+static const char *orientation_name (enum honey_orientation orientation) {
 	switch (orientation) {
-	case W3LD_ORIENT_LEFT: return "left";
-	case W3LD_ORIENT_RIGHT: return "right";
-	case W3LD_ORIENT_TOP: return "top";
+	case HONEY_ORIENT_LEFT: return "left";
+	case HONEY_ORIENT_RIGHT: return "right";
+	case HONEY_ORIENT_TOP: return "top";
 	default: return "bottom";
 	}
 }
 
-bool w3ld_config_get (
-	struct w3ld_server *server,
+bool honey_config_get (
+	struct honey_server *server,
 	const char *key,
 	char *reply,
 	size_t reply_size
 ) {
-	struct w3ld_config *config = &server->config;
+	struct honey_config *config = &server->config;
 
 	if (!strcmp(key, "xwayland-scale")) {
 		if (config->xwayland_scale_auto)

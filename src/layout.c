@@ -14,7 +14,7 @@
 
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 #define MAX_TILED 64
 
@@ -22,7 +22,7 @@
 
 /* Frame the tile (width x height) with a border of the given width. */
 static void set_border_rects (
-	struct w3ld_window *window,
+	struct honey_window *window,
 	int width,
 	int height,
 	int border
@@ -39,7 +39,7 @@ static void set_border_rects (
 }
 
 static void place_window (
-	struct w3ld_window *window,
+	struct honey_window *window,
 	int x,
 	int y,
 	int width,
@@ -50,15 +50,15 @@ static void place_window (
 		.height = height };
 	wlr_scene_node_set_position(&window->tree->node, x, y);
 	set_border_rects(window, width, height, border);
-	w3ld_window_configure(window, x + border, y + border,
+	honey_window_configure(window, x + border, y + border,
 			width - 2 * border, height - 2 * border);
-	DBG("tile %s -> %d,%d %dx%d bw %d", w3ld_window_app_id(window),
+	DBG("tile %s -> %d,%d %dx%d bw %d", honey_window_app_id(window),
 			x, y, width, height, border);
 }
 
 static void place_box (
-	struct w3ld_layout_ctx *ctx,
-	struct w3ld_window *window,
+	struct honey_layout_ctx *ctx,
+	struct honey_window *window,
 	struct wlr_box box
 ) {
 	place_window(window, box.x, box.y, box.width, box.height, ctx->border);
@@ -67,8 +67,8 @@ static void place_box (
 /* Split `count` windows along one axis of `box` with `gap` between them; the
  * last window absorbs integer-division remainder. */
 static void arrange_line (
-	struct w3ld_layout_ctx *ctx,
-	struct w3ld_window **windows,
+	struct honey_layout_ctx *ctx,
+	struct honey_window **windows,
 	int count,
 	struct wlr_box box,
 	bool vertical
@@ -92,16 +92,16 @@ static void arrange_line (
 
 /* ------------------------------------------------------------------- layouts */
 
-static void master_arrange (struct w3ld_layout_ctx *ctx) {
+static void master_arrange (struct honey_layout_ctx *ctx) {
 	int masters = ctx->nmaster < 1 ? 1 : ctx->nmaster;
 	if (masters > ctx->count)
 		masters = ctx->count;
 	int stacked = ctx->count - masters;
 
-	bool split_horizontal = ctx->orientation == W3LD_ORIENT_LEFT
-		|| ctx->orientation == W3LD_ORIENT_RIGHT;
-	bool master_first = ctx->orientation == W3LD_ORIENT_LEFT
-		|| ctx->orientation == W3LD_ORIENT_TOP;
+	bool split_horizontal = ctx->orientation == HONEY_ORIENT_LEFT
+		|| ctx->orientation == HONEY_ORIENT_RIGHT;
+	bool master_first = ctx->orientation == HONEY_ORIENT_LEFT
+		|| ctx->orientation == HONEY_ORIENT_TOP;
 
 	struct wlr_box master_box = ctx->area;
 	struct wlr_box stack_box = ctx->area;
@@ -141,7 +141,7 @@ static void master_arrange (struct w3ld_layout_ctx *ctx) {
 
 /* Fibonacci spiral: each window takes `spiral_ratio` of the remaining box, the
  * rest recurses with the split axis alternating. */
-static void spiral_arrange (struct w3ld_layout_ctx *ctx) {
+static void spiral_arrange (struct honey_layout_ctx *ctx) {
 	struct wlr_box remaining = ctx->area;
 	bool horizontal = ctx->spiral_horizontal;
 
@@ -168,7 +168,7 @@ static void spiral_arrange (struct w3ld_layout_ctx *ctx) {
 }
 
 /* Even rows x columns; a partial last row stretches to fill the width. */
-static void grid_arrange (struct w3ld_layout_ctx *ctx) {
+static void grid_arrange (struct honey_layout_ctx *ctx) {
 	int columns = ctx->grid_columns > 0 ? ctx->grid_columns
 		: (int)ceil(sqrt(ctx->count));
 	if (columns > ctx->count)
@@ -191,13 +191,13 @@ static void grid_arrange (struct w3ld_layout_ctx *ctx) {
 
 /* ------------------------------------------------------------------ registry */
 
-static const struct w3ld_layout layouts[] = {
+static const struct honey_layout layouts[] = {
 	{ "master", master_arrange },
 	{ "spiral", spiral_arrange },
 	{ "grid", grid_arrange },
 };
 
-const struct w3ld_layout *w3ld_layout_by_name (const char *name) {
+const struct honey_layout *honey_layout_by_name (const char *name) {
 	for (size_t i = 0; i < sizeof layouts / sizeof layouts[0]; i++) {
 		if (!strcmp(layouts[i].name, name))
 			return &layouts[i];
@@ -208,19 +208,19 @@ const struct w3ld_layout *w3ld_layout_by_name (const char *name) {
 /* -------------------------------------------------------------------- driver */
 
 static bool tiled_on (
-	struct w3ld_window *window,
-	struct w3ld_workspace *workspace
+	struct honey_window *window,
+	struct honey_workspace *workspace
 ) {
 	return window->mapped && window->workspace == workspace
-		&& w3ld_window_is_tiled(window);
+		&& honey_window_is_tiled(window);
 }
 
 /* Place a visible non-tiled window according to its state. */
 static void place_untiled (
-	struct w3ld_window *window,
-	struct w3ld_output *output
+	struct honey_window *window,
+	struct honey_output *output
 ) {
-	struct w3ld_config *config = &output->server->config;
+	struct honey_config *config = &output->server->config;
 
 	if (window->fullscreen || window->fake_fullscreen) {
 		struct wlr_box full;
@@ -238,19 +238,19 @@ static void place_untiled (
 	}
 }
 
-static void arrange_output (struct w3ld_output *output) {
+static void arrange_output (struct honey_output *output) {
 	if (!output->active)
 		return;
-	struct w3ld_server *server = output->server;
-	struct w3ld_config *config = &server->config;
-	struct w3ld_workspace *workspace = output->active;
+	struct honey_server *server = output->server;
+	struct honey_config *config = &server->config;
+	struct honey_workspace *workspace = output->active;
 
-	struct w3ld_window *tiled[MAX_TILED];
+	struct honey_window *tiled[MAX_TILED];
 	int count = 0;
-	struct w3ld_window *window;
+	struct honey_window *window;
 	wl_list_for_each(window, &server->windows, link) {
 		if (window->mapped && window->workspace == workspace
-				&& !w3ld_window_is_tiled(window))
+				&& !honey_window_is_tiled(window))
 			place_untiled(window, output);
 		else if (tiled_on(window, workspace) && count < MAX_TILED)
 			tiled[count++] = window;
@@ -261,7 +261,7 @@ static void arrange_output (struct w3ld_output *output) {
 	bool smart = config->smart_gaps && count == 1;
 	int gap_out = smart ? 0 : config->gaps_out;
 
-	struct w3ld_layout_ctx ctx = {
+	struct honey_layout_ctx ctx = {
 		.windows = tiled,
 		.count = count,
 		.area = {
@@ -283,17 +283,17 @@ static void arrange_output (struct w3ld_output *output) {
 		.grid_columns = config->grid_columns,
 	};
 
-	const struct w3ld_layout *layout =
+	const struct honey_layout *layout =
 		workspace->layout ? workspace->layout : config->layout;
 	layout->arrange(&ctx);
 }
 
-void w3ld_arrange (struct w3ld_server *server) {
-	struct w3ld_output *output;
+void honey_arrange (struct honey_server *server) {
+	struct honey_output *output;
 	wl_list_for_each(output, &server->outputs, link)
 		arrange_output(output);
 
-	struct w3ld_window *window;
+	struct honey_window *window;
 	wl_list_for_each(window, &server->windows, link) {
 		bool visible = window->mapped && window->workspace
 			&& window->workspace->output->active == window->workspace;
@@ -317,6 +317,6 @@ void w3ld_arrange (struct w3ld_server *server) {
 		}
 	}
 
-	w3ld_ext_workspace_sync(server);
-	w3ld_status_broadcast(server);
+	honey_ext_workspace_sync(server);
+	honey_status_broadcast(server);
 }

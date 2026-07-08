@@ -20,23 +20,23 @@
  * touches ONLY XWayland — regular Wayland clients are never affected. To excise
  * it entirely (reverting to sway/dwl behaviour: X11 apps upscaled/blurry):
  *   1. Delete this file (src/xdg-output.c).
- *   2. output-mgmt.c: replace `w3ld_xdg_output_setup(server)` with
+ *   2. output-mgmt.c: replace `honey_xdg_output_setup(server)` with
  *      `wlr_xdg_output_manager_v1_create(server->display, server->output_layout)`;
- *      drop the two `w3ld_xdg_output_update(server)` calls.
- *   3. xwayland.c: delete the "scaling" section (w3ld_output_xwayland_scale,
- *      output_xwayland_size, w3ld_output_xwayland_geometry, output_for_point,
- *      w3ld_xwayland_scale_at, w3ld_to_xwayland, w3ld_from_xwayland,
+ *      drop the two `honey_xdg_output_update(server)` calls.
+ *   3. xwayland.c: delete the "scaling" section (honey_output_xwayland_scale,
+ *      output_xwayland_size, honey_output_xwayland_geometry, output_for_point,
+ *      honey_xwayland_scale_at, honey_to_xwayland, honey_from_xwayland,
  *      buffer_scale_x11, descale_surface_tree); drop the descale_surface_tree
  *      calls in x11_commit/unmanaged_commit; in unmanaged_position and
  *      handle_request_configure use xsurface->x/y and event geometry directly.
- *   4. window.c: w3ld_window_configure X11 branch -> plain
+ *   4. window.c: honey_window_configure X11 branch -> plain
  *      wlr_xwayland_surface_configure(surface, x, y, width, height); the X11
  *      float-size branch in handle_map -> use xwayland_surface->width/height.
  *   5. seat.c: delete the X11 pointer-scale block (the try_from_wlr_surface one).
  *   6. action.c: float_seed X11 branch -> use xwayland_surface->width/height.
  *   7. config.c: delete the `xwayland-scale` key (set + get).
- *   8. w3ld.h: drop config.xwayland_scale/xwayland_scale_auto, the
- *      xdg_output_resources list, and the w3ld_*_xwayland_* / w3ld_xdg_output_*
+ *   8. honey.h: drop config.xwayland_scale/xwayland_scale_auto, the
+ *      xdg_output_resources list, and the honey_*_xwayland_* / honey_xdg_output_*
  *      declarations.
  *   9. Makefile: drop xdg-output-unstable-v1 from PROTOCOLS + IMPL_PROTOCOLS;
  *      remove protocol/xdg-output-unstable-v1.xml.
@@ -49,14 +49,14 @@
 
 #include "xdg-output-unstable-v1-protocol.h"
 
-#include "w3ld.h"
+#include "honey.h"
 
 #define XDG_OUTPUT_VERSION 2
 
 /* ------------------------------------------------------------------- events */
 
 static bool for_xwayland (
-	struct w3ld_server *server,
+	struct honey_server *server,
 	struct wl_resource *resource
 ) {
 	return server->xwayland && server->xwayland->server
@@ -65,7 +65,7 @@ static bool for_xwayland (
 }
 
 static void send_geometry (
-	struct w3ld_server *server,
+	struct honey_server *server,
 	struct wl_resource *resource
 ) {
 	struct wlr_output *wlr_output = wl_resource_get_user_data(resource);
@@ -78,7 +78,7 @@ static void send_geometry (
 		return; /* not in the layout */
 
 	if (for_xwayland(server, resource) && wlr_output->data)
-		w3ld_output_xwayland_geometry(wlr_output->data, &box);
+		honey_output_xwayland_geometry(wlr_output->data, &box);
 	zxdg_output_v1_send_logical_position(resource, box.x, box.y);
 	zxdg_output_v1_send_logical_size(resource, box.width, box.height);
 	zxdg_output_v1_send_done(resource);
@@ -87,19 +87,19 @@ static void send_geometry (
 /* Resend after anything that moves geometry: layout changes, mode/scale
  * changes, xwayland-scale changes. Clients (Xwayland's RANDR included) apply
  * output state on wl_output.done, so one is scheduled for every output. */
-void w3ld_xdg_output_update (struct w3ld_server *server) {
+void honey_xdg_output_update (struct honey_server *server) {
 	struct wl_resource *resource;
 	wl_resource_for_each(resource, &server->xdg_output_resources)
 		send_geometry(server, resource);
 
-	struct w3ld_output *output;
+	struct honey_output *output;
 	wl_list_for_each(output, &server->outputs, link)
 		wlr_output_schedule_done(output->wlr_output);
 }
 
 /* Called from output teardown so stale resources go inert, not dangling. */
-void w3ld_xdg_output_output_destroyed (
-	struct w3ld_server *server,
+void honey_xdg_output_output_destroyed (
+	struct honey_server *server,
 	struct wlr_output *wlr_output
 ) {
 	struct wl_resource *resource;
@@ -139,7 +139,7 @@ static void manager_handle_get_xdg_output (
 	uint32_t id,
 	struct wl_resource *output_resource
 ) {
-	struct w3ld_server *server = wl_resource_get_user_data(manager_resource);
+	struct honey_server *server = wl_resource_get_user_data(manager_resource);
 	struct wlr_output *wlr_output = wlr_output_from_resource(output_resource);
 
 	struct wl_resource *resource = wl_resource_create(client,
@@ -187,7 +187,7 @@ static void manager_bind (
 
 /* -------------------------------------------------------------------- setup */
 
-void w3ld_xdg_output_setup (struct w3ld_server *server) {
+void honey_xdg_output_setup (struct honey_server *server) {
 	wl_list_init(&server->xdg_output_resources);
 	wl_global_create(server->display, &zxdg_output_manager_v1_interface,
 			XDG_OUTPUT_VERSION, server, manager_bind);

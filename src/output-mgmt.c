@@ -13,26 +13,26 @@
 #include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* --------------------------------------------------------------------- helpers */
 
 /* Refresh each output's usable box (full box minus layer-shell exclusive zones)
  * and re-tile. */
-static void refresh_layout (struct w3ld_server *server) {
-	w3ld_xdg_output_update(server);
-	struct w3ld_output *output;
+static void refresh_layout (struct honey_server *server) {
+	honey_xdg_output_update(server);
+	struct honey_output *output;
 	wl_list_for_each(output, &server->outputs, link)
-		w3ld_layer_arrange(output);
-	w3ld_arrange(server);
+		honey_layer_arrange(output);
+	honey_arrange(server);
 }
 
 /* Advertise the current output configuration to management clients. */
-static void advertise_configuration (struct w3ld_server *server) {
+static void advertise_configuration (struct honey_server *server) {
 	struct wlr_output_configuration_v1 *config =
 		wlr_output_configuration_v1_create();
 
-	struct w3ld_output *output;
+	struct honey_output *output;
 	wl_list_for_each(output, &server->outputs, link) {
 		struct wlr_output_configuration_head_v1 *head =
 			wlr_output_configuration_head_v1_create(config, output->wlr_output);
@@ -48,7 +48,7 @@ static void advertise_configuration (struct w3ld_server *server) {
 
 /* Apply (or just test) a client-requested configuration. */
 static bool apply_configuration (
-	struct w3ld_server *server,
+	struct honey_server *server,
 	struct wlr_output_configuration_v1 *config,
 	bool test_only
 ) {
@@ -92,7 +92,7 @@ static void output_manager_apply (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, output_manager_apply);
 	struct wlr_output_configuration_v1 *config = data;
 
@@ -109,7 +109,7 @@ static void output_manager_test (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, output_manager_test);
 	struct wlr_output_configuration_v1 *config = data;
 
@@ -124,7 +124,7 @@ static void output_layout_change (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server =
+	struct honey_server *server =
 		wl_container_of(listener, server, output_layout_change);
 	refresh_layout(server);
 	advertise_configuration(server);
@@ -132,13 +132,13 @@ static void output_layout_change (
 
 /* -------------------------------------------------------------------- setup */
 
-/* ---------------------------------------------------------- w3ldctl command */
+/* ---------------------------------------------------------- honeyctl command */
 
-static struct w3ld_output *output_by_name (
-	struct w3ld_server *server,
+static struct honey_output *output_by_name (
+	struct honey_server *server,
 	const char *name
 ) {
-	struct w3ld_output *output;
+	struct honey_output *output;
 	wl_list_for_each(output, &server->outputs, link) {
 		if (!strcmp(output->wlr_output->name, name))
 			return output;
@@ -148,8 +148,8 @@ static struct w3ld_output *output_by_name (
 
 /* `output <name> [mode WxH[@R]] [scale F] [pos X,Y] [transform 0-7]
  *  [adaptive-sync on|off] [on|off]` — apply native output config. */
-bool w3ld_output_command (
-	struct w3ld_server *server,
+bool honey_output_command (
+	struct honey_server *server,
 	char *args,
 	char *error,
 	size_t error_size
@@ -161,7 +161,7 @@ bool w3ld_output_command (
 				" [scale F] [pos X,Y] [transform 0-7] [on|off]");
 		return false;
 	}
-	struct w3ld_output *output = output_by_name(server, name);
+	struct honey_output *output = output_by_name(server, name);
 	if (!output) {
 		snprintf(error, error_size, "unknown output '%s'", name);
 		return false;
@@ -246,9 +246,9 @@ bool w3ld_output_command (
 	return true;
 }
 
-void w3ld_output_manager_setup (struct w3ld_server *server) {
+void honey_output_manager_setup (struct honey_server *server) {
 	server->output_manager = wlr_output_manager_v1_create(server->display);
-	w3ld_xdg_output_setup(server); /* xwayland-scale (removable): stock = wlr_xdg_output_manager_v1_create */
+	honey_xdg_output_setup(server); /* xwayland-scale (removable): stock = wlr_xdg_output_manager_v1_create */
 
 	server->output_manager_apply.notify = output_manager_apply;
 	wl_signal_add(&server->output_manager->events.apply,

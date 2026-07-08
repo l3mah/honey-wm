@@ -1,8 +1,8 @@
-# w3ld-wm — design & plan
+# honey-wm — design & plan
 
-**w3ld** (weld / "wwm") is a tiling Wayland **compositor** built directly on
+**honey** (weld / "wwm") is a tiling Wayland **compositor** built directly on
 **wlroots 0.20**, succeeding [lakewm](https://github.com/l3mah/lakewm). lakewm was
-a *client* of the river compositor (it spoke `river-window-management-v1`); w3ld
+a *client* of the river compositor (it spoke `river-window-management-v1`); honey
 **is** the compositor. Same window-management brain, no river dependency, no
 ceiling on what the WM can control.
 
@@ -10,8 +10,8 @@ ceiling on what the WM can control.
 
 1. **Migrate lakewm from a river WM to a full wlroots compositor.** Same policy
    brain, new foundation. lakewm stays intact and frozen as a working river WM.
-2. **Simple, clean, DRY, efficient, unbloated — dwl-style.** One `w3ld.h` header
-   + one `w3ld_server`, the existing module split, a minimal protocol set, no
+2. **Simple, clean, DRY, efficient, unbloated — dwl-style.** One `honey.h` header
+   + one `honey_server`, the existing module split, a minimal protocol set, no
    effects at first.
 3. **Modern wlroots (0.20).** Pinned; nix `wlroots` attr = 0.20.1, matching
    river's link. pkg-config name `wlroots-0.20`.
@@ -50,9 +50,9 @@ effects. See the `river-ceiling` memory for the full diagnosis.
   `on_drop` lifecycle hooks, no per-workspace tree. master/spiral/grid all fit
   one contract; swap/drop/next/prev come free. A stateful dwindle tree is
   explicitly **out of scope**.
-- **Pure-IPC config.** The `w3ldctl` command language *is* the config language.
+- **Pure-IPC config.** The `honeyctl` command language *is* the config language.
   No compile-time `config.h`, no config-file format, no reload — the `init` file
-  is just a shell script of `w3ldctl` calls that apply as-is.
+  is just a shell script of `honeyctl` calls that apply as-is.
 
 ## 4. Port / donate / new
 
@@ -69,9 +69,9 @@ Output into `wlr_scene` node positions instead of river `propose_dimensions`.
   pointer-bind lists. Drop the per-seat river-object reconciliation → use
   `wlr_keyboard` directly.
 - `config.c` (~70) — defaults + `has_<key>` effective-value resolution.
-- `ipc.c` + `w3ldctl.c` + `status.c` (~1200) — runtime control socket, command
+- `ipc.c` + `honeyctl.c` + `status.c` (~1200) — runtime control socket, command
   parser, and the `subscribe` JSON-Lines stream (schema **v:1** — keep identical
-  so w3ld-waybar reuses it).
+  so honey-waybar reuses it).
 - window rules (`apply_rules`) — `app-id`/`title`/`initial-title` (+`-re`) →
   `workspace`/`float [W H]`/`tile`/`suppress-maximize`/`no-focus`; replace-on-
   same-match; new-windows-only.
@@ -96,7 +96,7 @@ Output into `wlr_scene` node positions instead of river `propose_dimensions`.
 - `layer.c` — implement `wlr_layer_shell_v1` (scene layers + exclusive zones).
 - `xwayland.c` — `wlr_xwayland` + the donated `xwm`.
 - `output-mgmt.c` — server side of `wlr-output-management-v1`: native in-process
-  output config **and** makes `wlr-randr`/`kanshi` work against w3ld.
+  output config **and** makes `wlr-randr`/`kanshi` work against honey.
 - foreign-toplevel + ext-workspace — `wlr_foreign_toplevel_management` +
   `ext-workspace` so stock waybar/taskbar modules work natively (additive to the
   own `subscribe` stream; the titlebar issue is unrelated to bars).
@@ -118,8 +118,8 @@ in-window); XWayland `force_zero_scaling`. Effects possible but deferred.
 
 ## 5. Bars / IPC — unchanged
 
-The `w3ldctl` socket and the `subscribe` JSON stream are w3ld's own protocol —
-nothing to do with river or wlroots. They port over unchanged; w3ld-waybar keeps
+The `honeyctl` socket and the `subscribe` JSON stream are honey's own protocol —
+nothing to do with river or wlroots. They port over unchanged; honey-waybar keeps
 consuming the same v1 schema. Being a compositor only *adds* the option to also
 serve `ext-workspace`/`foreign-toplevel` for stock bars (approved — additive).
 The GTK decoration issue is separate from waybar.
@@ -133,7 +133,7 @@ The GTK decoration issue is separate from waybar.
 - **M2** — workspaces + multi-monitor + `wlr_output_layout` + native output
   config (+ `wlr-output-management` server for wlr-randr/kanshi).
 - **M3** — layer-shell + decorations (both protocols) + input (libinput direct) +
-  IPC/`w3ldctl`/status + config init.
+  IPC/`honeyctl`/status + config init.
 - **M4** — XWayland + foreign-toplevel + ext-workspace + manager long-tail (gamma,
   session-lock, screencopy, activation, clipboard).
 - **M5** — polish: rules, floating/fullscreen/maximize/fake-fullscreen, pointer
@@ -152,9 +152,9 @@ The GTK decoration issue is separate from waybar.
 - **Headless test:** `WLR_BACKENDS=headless WLR_RENDERER=pixman
   WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1`; short `XDG_RUNTIME_DIR`
   (<108-byte sun_path); kill test compositor by EXACT PID, never `pkill -f`.
-- **Names:** binary `w3ld`; control client `w3ldctl`; config `~/.config/w3ld/init`
-  (shell script of `w3ldctl` calls); socket `$XDG_RUNTIME_DIR/w3ld-$WAYLAND_DISPLAY.sock`;
-  bar consumer `w3ld-waybar`.
+- **Names:** binary `honey`; control client `honeyctl`; config `~/.config/honey/init`
+  (shell script of `honeyctl` calls); socket `$XDG_RUNTIME_DIR/honey-$WAYLAND_DISPLAY.sock`;
+  bar consumer `honey-waybar`.
 - **Commits:** no Claude co-author trailer; author `Maxence Hamel
   <maxence.hc@gmail.com>`.
 
@@ -166,7 +166,7 @@ workspaces), stateful layouts (dwindle tree), Xorg (Wayland + XWayland only).
 ## References
 
 - lakewm (`../../lakewm`) — policy code + the `subscribe` schema + lakewm-waybar
-  (→ w3ld-waybar).
+  (→ honey-waybar).
 - dwl (codeberg.org/dwl/dwl) — compositor skeleton, scene layers, XWayland.
 - tinywl (wlroots reference) — minimal `wlr_scene` bootstrap.
 - wlroots 0.20 headers — the API of record.

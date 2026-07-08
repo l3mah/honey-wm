@@ -13,24 +13,24 @@
 #include <wlr/render/color.h>
 #include <wlr/types/wlr_tearing_control_v1.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* ------------------------------------------------------------------- listeners */
 
 /* Tear when allowed and the focused window on this output fills it and hints
  * async presentation (a fullscreen game). */
-static bool tearing_wanted (struct w3ld_output *output) {
-	struct w3ld_server *server = output->server;
+static bool tearing_wanted (struct honey_output *output) {
+	struct honey_server *server = output->server;
 	if (!server->config.allow_tearing || !server->focused)
 		return false;
-	struct w3ld_window *window = server->focused;
+	struct honey_window *window = server->focused;
 	if (window->workspace->output != output)
 		return false;
 	if (window->geom.width < output->usable.width
 			|| window->geom.height < output->usable.height)
 		return false;
 	return wlr_tearing_control_manager_v1_surface_hint_from_surface(
-			server->tearing_control, w3ld_window_surface(window))
+			server->tearing_control, honey_window_surface(window))
 		== WP_TEARING_CONTROL_V1_PRESENTATION_HINT_ASYNC;
 }
 
@@ -38,7 +38,7 @@ static void output_frame (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_output *output = wl_container_of(listener, output, frame);
+	struct honey_output *output = wl_container_of(listener, output, frame);
 	struct wlr_scene_output *scene_output =
 		wlr_scene_get_scene_output(output->server->scene, output->wlr_output);
 
@@ -64,11 +64,11 @@ static void output_destroy (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_output *output = wl_container_of(listener, output, destroy);
-	struct w3ld_server *server = output->server;
+	struct honey_output *output = wl_container_of(listener, output, destroy);
+	struct honey_server *server = output->server;
 
-	struct w3ld_output *other;
-	struct w3ld_output *fallback = NULL;
+	struct honey_output *other;
+	struct honey_output *fallback = NULL;
 	wl_list_for_each(other, &server->outputs, link) {
 		if (other != output) {
 			fallback = other;
@@ -76,7 +76,7 @@ static void output_destroy (
 		}
 	}
 
-	struct w3ld_window *window;
+	struct honey_window *window;
 	wl_list_for_each(window, &server->windows, link) {
 		if (window->workspace && window->workspace->output == output)
 			window->workspace = fallback ? fallback->active : NULL;
@@ -84,7 +84,7 @@ static void output_destroy (
 	if (server->focused_output == output)
 		server->focused_output = fallback;
 
-	struct w3ld_workspace *workspace, *tmp;
+	struct honey_workspace *workspace, *tmp;
 	wl_list_for_each_safe(workspace, tmp, &output->workspaces, link) {
 		wl_list_remove(&workspace->link);
 		if (workspace->ext)
@@ -96,7 +96,7 @@ static void output_destroy (
 		wlr_ext_workspace_group_handle_v1_destroy(output->ext_group);
 	if (output->gamma_transform)
 		wlr_color_transform_unref(output->gamma_transform);
-	w3ld_xdg_output_output_destroyed(server, output->wlr_output);
+	honey_xdg_output_output_destroyed(server, output->wlr_output);
 	free(output->status_workspaces);
 	free(output->status_window);
 
@@ -106,8 +106,8 @@ static void output_destroy (
 	free(output);
 
 	if (fallback) {
-		w3ld_arrange(server);
-		w3ld_focus_output_active(fallback);
+		honey_arrange(server);
+		honey_focus_output_active(fallback);
 	} else {
 		server->focused = NULL;
 	}
@@ -119,7 +119,7 @@ static void handle_new_output (
 	struct wl_listener *listener,
 	void *data
 ) {
-	struct w3ld_server *server = wl_container_of(listener, server, new_output);
+	struct honey_server *server = wl_container_of(listener, server, new_output);
 	struct wlr_output *wlr_output = data;
 
 	wlr_output_init_render(wlr_output, server->allocator, server->renderer);
@@ -133,10 +133,10 @@ static void handle_new_output (
 	wlr_output_commit_state(wlr_output, &state);
 	wlr_output_state_finish(&state);
 
-	struct w3ld_output *output = calloc(1, sizeof *output);
+	struct honey_output *output = calloc(1, sizeof *output);
 	output->server = server;
 	output->wlr_output = wlr_output;
-	wlr_output->data = output; /* for wlr_output -> w3ld_output lookups */
+	wlr_output->data = output; /* for wlr_output -> honey_output lookups */
 	wl_list_init(&output->workspaces);
 	wl_list_init(&output->layer_surfaces);
 
@@ -157,12 +157,12 @@ static void handle_new_output (
 	wlr_output_layout_get_box(server->output_layout, wlr_output,
 			&output->usable);
 
-	output->active = w3ld_workspace_get(output, 1);
+	output->active = honey_workspace_get(output, 1);
 	if (!server->focused_output)
 		server->focused_output = output;
 
 	if (server->gamma_temperature > 0)
-		w3ld_gamma_update_output(output); /* hotplugged during night light */
+		honey_gamma_update_output(output); /* hotplugged during night light */
 
 	LOG("new output %s %dx%d at %d,%d", wlr_output->name,
 			output->usable.width, output->usable.height,
@@ -171,7 +171,7 @@ static void handle_new_output (
 
 /* -------------------------------------------------------------------- setup */
 
-void w3ld_output_setup (struct w3ld_server *server) {
+void honey_output_setup (struct honey_server *server) {
 	wl_list_init(&server->outputs);
 	server->new_output.notify = handle_new_output;
 	wl_signal_add(&server->backend->events.new_output, &server->new_output);

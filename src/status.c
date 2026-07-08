@@ -8,14 +8,14 @@
  *
  * A global `gamma` event (temperature Kelvin, brightness percent) is sent on
  * connect and whenever gamma changes by any route, so a bar reflects the live
- * state however it was driven (scroll, hotkey, direct `w3ldctl gamma`).
+ * state however it was driven (scroll, hotkey, direct `honeyctl gamma`).
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 
-#include "w3ld.h"
+#include "honey.h"
 
 /* ------------------------------------------------------------------- helpers */
 
@@ -40,9 +40,9 @@ static void json_escape (
 	out[o] = '\0';
 }
 
-static int count_windows (struct w3ld_workspace *workspace) {
+static int count_windows (struct honey_workspace *workspace) {
 	int count = 0;
-	struct w3ld_window *window;
+	struct honey_window *window;
 	wl_list_for_each(window, &workspace->output->server->windows, link) {
 		if (window->mapped && window->workspace == workspace)
 			count++;
@@ -53,11 +53,11 @@ static int count_windows (struct w3ld_workspace *workspace) {
 /* --------------------------------------------------------------- formatting */
 
 static void format_workspaces (
-	struct w3ld_output *output,
+	struct honey_output *output,
 	char *buffer,
 	size_t cap
 ) {
-	struct w3ld_server *server = output->server;
+	struct honey_server *server = output->server;
 	int active = output->active ? output->active->number : 0;
 	bool focused = server->focused_output == output;
 
@@ -66,7 +66,7 @@ static void format_workspaces (
 	size_t oo = 0, no = 0;
 	int active_count = 0;
 
-	struct w3ld_workspace *workspace;
+	struct honey_workspace *workspace;
 	wl_list_for_each(workspace, &output->workspaces, link) {
 		int windows = count_windows(workspace);
 		if (workspace == output->active)
@@ -91,21 +91,21 @@ static void format_workspaces (
 }
 
 static void format_window (
-	struct w3ld_output *output,
+	struct honey_output *output,
 	char *buffer,
 	size_t cap
 ) {
-	struct w3ld_server *server = output->server;
+	struct honey_server *server = output->server;
 	bool focused = server->focused_output == output;
 
-	struct w3ld_window *window = NULL;
+	struct honey_window *window = NULL;
 	if (focused && server->focused)
 		window = server->focused;
 	else if (output->active)
-		window = w3ld_workspace_first_window(output->active);
+		window = honey_workspace_first_window(output->active);
 
-	const char *app_id = window ? w3ld_window_app_id(window) : "";
-	const char *title = window ? w3ld_window_title(window) : "";
+	const char *app_id = window ? honey_window_app_id(window) : "";
+	const char *title = window ? honey_window_title(window) : "";
 	char escaped_app[256], escaped_title[512];
 	json_escape(app_id, escaped_app, sizeof escaped_app);
 	json_escape(title, escaped_title, sizeof escaped_title);
@@ -120,7 +120,7 @@ static void format_window (
 /* Gamma is global (not per-output): one line reporting the current temperature
  * (Kelvin, 0 = off) and brightness (percent, matching the command interface). */
 static void format_gamma (
-	struct w3ld_server *server,
+	struct honey_server *server,
 	char *buffer,
 	size_t cap
 ) {
@@ -140,10 +140,10 @@ static void send_line (
 }
 
 static void send_to_subscribers (
-	struct w3ld_server *server,
+	struct honey_server *server,
 	const char *line
 ) {
-	struct w3ld_ipc_client *client;
+	struct honey_ipc_client *client;
 	wl_list_for_each(client, &server->ipc_clients, link) {
 		if (client->subscriber)
 			send_line(client->fd, line);
@@ -151,8 +151,8 @@ static void send_to_subscribers (
 }
 
 /* Whether any connected client is a status subscriber. */
-static bool has_subscribers (struct w3ld_server *server) {
-	struct w3ld_ipc_client *client;
+static bool has_subscribers (struct honey_server *server) {
+	struct honey_ipc_client *client;
 	wl_list_for_each(client, &server->ipc_clients, link) {
 		if (client->subscriber)
 			return true;
@@ -160,14 +160,14 @@ static bool has_subscribers (struct w3ld_server *server) {
 	return false;
 }
 
-void w3ld_status_broadcast (struct w3ld_server *server) {
+void honey_status_broadcast (struct honey_server *server) {
 	/* Zero-cost when nobody is listening: skip the per-arrange JSON format +
 	 * diff entirely. The standard ext-workspace / foreign-toplevel protocols
 	 * cover generic bars; this stream is an optional hook for custom tooling. */
 	if (!has_subscribers(server))
 		return;
 
-	struct w3ld_output *output;
+	struct honey_output *output;
 	wl_list_for_each(output, &server->outputs, link) {
 		char buffer[1024];
 
@@ -189,7 +189,7 @@ void w3ld_status_broadcast (struct w3ld_server *server) {
 	}
 }
 
-void w3ld_status_broadcast_gamma (struct w3ld_server *server) {
+void honey_status_broadcast_gamma (struct honey_server *server) {
 	if (!has_subscribers(server))
 		return;
 	char buffer[128];
@@ -197,11 +197,11 @@ void w3ld_status_broadcast_gamma (struct w3ld_server *server) {
 	send_to_subscribers(server, buffer);
 }
 
-void w3ld_status_snapshot (
-	struct w3ld_server *server,
-	struct w3ld_ipc_client *client
+void honey_status_snapshot (
+	struct honey_server *server,
+	struct honey_ipc_client *client
 ) {
-	struct w3ld_output *output;
+	struct honey_output *output;
 	wl_list_for_each(output, &server->outputs, link) {
 		char buffer[1024];
 		format_workspaces(output, buffer, sizeof buffer);
