@@ -18,7 +18,7 @@ makedepends="wlroots0.20-devel wayland-devel libxkbcommon-devel pixman-devel
  libinput-devel libdrm-devel libxcb-devel xcb-util-wm-devel"
 depends="xorg-server-xwayland"
 short_desc="Tiling Wayland compositor on wlroots (master-stack, dynamic config)"
-maintainer="Maxence Hamel <maxence.hc@gmail.com>"
+maintainer="Maxence Hamel <dev@maxencehamel.com>"
 license="GPL-3.0-or-later"
 homepage="https://github.com/l3mah/honey-wm"
 distfiles="https://github.com/l3mah/honey-wm/archive/refs/tags/v${version}.tar.gz"
