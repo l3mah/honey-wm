@@ -5,8 +5,8 @@
  *   - xdg-decoration (zxdg_decoration_manager_v1): each toplevel decoration is
  *     forced to server-side mode. Spoken by alacritty and newer Qt.
  *   - kde server-decoration (org_kde_kwin_server_decoration_manager): default
- *     server mode. This is the protocol GTK3/GTK4 actually speak — advertising
- *     it is the fix for GTK client-side headerbars that river could not provide.
+ *     server mode. This is the protocol GTK3/GTK4 actually speak; advertising
+ *     it is the fix for GTK client-side headerbars.
  */
 #include <stdlib.h>
 

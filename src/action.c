@@ -246,7 +246,7 @@ void honey_action_orientation_cycle (struct honey_server *server) {
 /* ------------------------------------------------------------- window states */
 
 /* Convert a float-size config value to pixels: a fraction of the usable axis,
- * with values above 1 read as a percent (lakewm compatibility). */
+ * with values above 1 read as a percent. */
 static int float_size (
 	double value,
 	int axis

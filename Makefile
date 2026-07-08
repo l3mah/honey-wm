@@ -6,7 +6,7 @@
 #   nix-shell -p wlroots wayland wayland-protocols wayland-scanner libxkbcommon \
 #     pixman libinput libdrm libxcb xcbutilwm pkg-config gcc gnumake --run make
 #
-# wlroots is the 0.20.1 nix attr (pkg-config name wlroots-0.20), matching river.
+# wlroots is the 0.20.1 nix attr (pkg-config name wlroots-0.20).
 # xcb + xcbutilwm are needed for the XWayland headers; the Xwayland binary is a
 # runtime dependency (nix `xwayland`), started lazily on the first X11 client.
 
