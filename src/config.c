@@ -29,6 +29,7 @@ void w3ld_config_defaults (struct w3ld_config *config) {
 	config->float_height = 0.5;
 	config->follow_mouse = true;
 	config->mouse_follows_focus = true;
+	config->warp_on_workspace_switch = false;
 	config->new_window_master = false;
 	config->focus_new = true;
 	config->mouse_focus_new = false;
@@ -111,6 +112,8 @@ bool w3ld_config_set (
 		config->follow_mouse = parse_bool(value);
 	} else if (!strcmp(key, "mouse-follows-focus")) {
 		config->mouse_follows_focus = parse_bool(value);
+	} else if (!strcmp(key, "warp-on-workspace-switch")) {
+		config->warp_on_workspace_switch = parse_bool(value);
 	} else if (!strcmp(key, "new-window-master")) {
 		config->new_window_master = parse_bool(value);
 	} else if (!strcmp(key, "focus-new")) {
@@ -247,6 +250,7 @@ bool w3ld_config_get (
 		{ "float-app-size", V_BOOL, &config->float_app_size },
 		{ "follow-mouse", V_BOOL, &config->follow_mouse },
 		{ "mouse-follows-focus", V_BOOL, &config->mouse_follows_focus },
+		{ "warp-on-workspace-switch", V_BOOL, &config->warp_on_workspace_switch },
 		{ "new-window-master", V_BOOL, &config->new_window_master },
 		{ "focus-new", V_BOOL, &config->focus_new },
 		{ "mouse-focus-new", V_BOOL, &config->mouse_focus_new },

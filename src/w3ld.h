@@ -102,6 +102,7 @@ struct w3ld_config {
 	/* behavior */
 	bool follow_mouse;
 	bool mouse_follows_focus;
+	bool warp_on_workspace_switch; /* mouse-follows-focus also warps on ws switch */
 	bool new_window_master;
 	bool focus_new;
 	bool mouse_focus_new;

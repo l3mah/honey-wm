@@ -26,7 +26,11 @@ void w3ld_switch_workspace (
 	server->focused_output = output;
 	w3ld_arrange(server);
 	w3ld_focus_output_active(output);
-	w3ld_warp_to_focus(server);
+	/* Switching workspace (keyboard or a bar click) shouldn't yank the cursor
+	 * unless explicitly opted in — a click on the workspace module would
+	 * otherwise teleport the pointer away from the bar. */
+	if (server->config.warp_on_workspace_switch)
+		w3ld_warp_to_focus(server);
 }
 
 /* --------------------------------------------------------------------- focus */
