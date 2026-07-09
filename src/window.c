@@ -71,6 +71,11 @@ void honey_window_configure (
 		double scale = honey_xwayland_scale_at(server, x, y);
 		wlr_xwayland_surface_configure(window->xwayland_surface, xw_x, xw_y,
 				(int)round(width * scale), (int)round(height * scale));
+	} else if (window->float_pending_app_size) {
+		/* Awaiting the client's own size: keep asking it to choose (0,0) rather
+		 * than pinning the seeded placeholder, so arrange cannot clobber the
+		 * pending choice. window_commit adopts the committed size and re-places. */
+		wlr_xdg_toplevel_set_size(window->xdg_toplevel, 0, 0);
 	} else {
 		if (!same_size)
 			window->resize_serial = wlr_xdg_toplevel_set_size(
@@ -477,6 +482,27 @@ static bool window_wants_floating (struct honey_window *window) {
 		&& state->min_height == state->max_height;
 }
 
+/* Float an XDG window at its own natural size, centred. Sends 0,0 so the
+ * client re-picks its preferred size and adopts it on the next commit — this
+ * recovers the size if a tile-size configure had stretched the window while it
+ * was reserved (a dialog whose parent arrived after its first commit would
+ * otherwise float at a full column's height). The seeded size is clamped to
+ * the output, so it can never exceed the screen in the meantime. This is the
+ * dialog path; forced floats (rules, toggle-float) size via honey_float_seed. */
+static void xdg_float_natural (struct honey_window *window) {
+	struct wlr_box *usable = &window->workspace->output->usable;
+	int width = window->xdg_toplevel->base->geometry.width;
+	int height = window->xdg_toplevel->base->geometry.height;
+	if (width <= 0 || width > usable->width)
+		width = (int)(usable->width * 0.4);
+	if (height <= 0 || height > usable->height)
+		height = (int)(usable->height * 0.4);
+	honey_window_set_float_geom(window, width, height);
+	window->float_pending_app_size = true;
+	window->resize_serial = 0;
+	wlr_xdg_toplevel_set_size(window->xdg_toplevel, 0, 0);
+}
+
 void honey_window_handle_map (struct honey_window *window) {
 	struct honey_server *server = window->server;
 
@@ -489,7 +515,7 @@ void honey_window_handle_map (struct honey_window *window) {
 	/* Dialog-class windows float centred at their own size rather than tiling. */
 	if (window_wants_floating(window)) {
 		window->floating = true;
-		int width, height;
+		honey_window_update_layer(window);
 		if (window->type == HONEY_WINDOW_X11) {
 			/* xwayland-scale (removable): X11 reports its size in the scaled
 			 * coordinate space; float_geom is logical and configure re-applies
@@ -498,19 +524,17 @@ void honey_window_handle_map (struct honey_window *window) {
 			 * its real size in the corner of a black, oversized buffer). */
 			double scale =
 				honey_output_xwayland_scale(window->workspace->output);
-			width = (int)round(window->xwayland_surface->width / scale);
-			height = (int)round(window->xwayland_surface->height / scale);
+			int width = (int)round(window->xwayland_surface->width / scale);
+			int height = (int)round(window->xwayland_surface->height / scale);
+			struct wlr_box *usable = &window->workspace->output->usable;
+			if (width <= 0 || width > usable->width)
+				width = (int)(usable->width * 0.4);
+			if (height <= 0 || height > usable->height)
+				height = (int)(usable->height * 0.4);
+			honey_window_set_float_geom(window, width, height);
 		} else {
-			struct wlr_box *geometry = &window->xdg_toplevel->base->geometry;
-			width = geometry->width;
-			height = geometry->height;
+			xdg_float_natural(window);
 		}
-		if (width <= 0)
-			width = (int)(server->focused_output->usable.width * 0.4);
-		if (height <= 0)
-			height = (int)(server->focused_output->usable.height * 0.4);
-		honey_window_set_float_geom(window, width, height);
-		honey_window_update_layer(window);
 	}
 
 	bool no_focus = apply_rules(window);
@@ -709,6 +733,24 @@ static void window_app_id_changed (
 	honey_status_broadcast(window->server);
 }
 
+/* A window that gains a parent after mapping (a dialog whose transient-for
+ * lands late) becomes a float at its natural size — otherwise it stays a
+ * full-height tiled column. */
+static void window_parent_changed (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct honey_window *window = wl_container_of(listener, window, set_parent);
+	if (!window->mapped || !honey_window_is_tiled(window)
+			|| !window->xdg_toplevel->parent)
+		return;
+	window->floating = true;
+	honey_window_update_layer(window);
+	honey_window_inform_states(window);
+	xdg_float_natural(window);
+	honey_arrange(window->server);
+}
+
 static void window_destroy (
 	struct wl_listener *listener,
 	void *data
@@ -724,6 +766,7 @@ static void window_destroy (
 	wl_list_remove(&window->destroy.link);
 	wl_list_remove(&window->set_title.link);
 	wl_list_remove(&window->set_app_id.link);
+	wl_list_remove(&window->set_parent.link);
 	wl_list_remove(&window->request_fullscreen.link);
 	wl_list_remove(&window->request_maximize.link);
 	free(window->initial_title);
@@ -815,6 +858,8 @@ static void new_xdg_toplevel (
 	wl_signal_add(&toplevel->events.set_title, &window->set_title);
 	window->set_app_id.notify = window_app_id_changed;
 	wl_signal_add(&toplevel->events.set_app_id, &window->set_app_id);
+	window->set_parent.notify = window_parent_changed;
+	wl_signal_add(&toplevel->events.set_parent, &window->set_parent);
 	window->request_fullscreen.notify = window_request_fullscreen;
 	wl_signal_add(&toplevel->events.request_fullscreen,
 			&window->request_fullscreen);
