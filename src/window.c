@@ -12,6 +12,7 @@
 #include <string.h>
 
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
+#include <wlr/util/edges.h>
 #include <wlr/xwayland/xwayland.h>
 
 #include "honey.h"
@@ -123,6 +124,17 @@ void honey_window_inform_states (struct honey_window *window) {
 	} else {
 		wlr_xdg_toplevel_set_fullscreen(window->xdg_toplevel, fullscreen);
 		wlr_xdg_toplevel_set_maximized(window->xdg_toplevel, window->maximized);
+		/* Tiled states make the configured size binding: mpv letterboxes
+		 * instead of shrinking to the video's aspect, GTK squares its
+		 * corners. Cleared when floating so apps size freely again.
+		 * (xdg-shell v2 introduced the states; older clients get nothing.) */
+		if (wl_resource_get_version(window->xdg_toplevel->resource) >= 2) {
+			wlr_xdg_toplevel_set_tiled(window->xdg_toplevel,
+					honey_window_is_tiled(window)
+					? WLR_EDGE_LEFT | WLR_EDGE_RIGHT
+						| WLR_EDGE_TOP | WLR_EDGE_BOTTOM
+					: WLR_EDGE_NONE);
+		}
 	}
 }
 
@@ -489,6 +501,8 @@ void honey_window_handle_map (struct honey_window *window) {
 	}
 
 	bool no_focus = apply_rules(window);
+	/* Rules have settled tiled-vs-floating; tell the client (tiled states). */
+	honey_window_inform_states(window);
 
 	/* A fullscreen/maximized window on this workspace either yields to the
 	 * new window or keeps covering it (and keeps focus). Fake-fullscreen is
