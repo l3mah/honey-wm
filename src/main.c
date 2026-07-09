@@ -214,6 +214,11 @@ int main (
 	wl_list_remove(&server.new_idle_inhibitor.link);
 	wl_list_remove(&server.new_shortcuts_inhibitor.link);
 
+	/* Tear the backend down while the display's protocol globals are still
+	 * alive: output destruction frees each output's ext-workspace handles,
+	 * which belong to a manager global that wl_display_destroy would otherwise
+	 * free first (leaving the per-output destroy to touch freed memory). */
+	wlr_backend_destroy(server.backend);
 	wl_display_destroy(server.display);
 	return 0;
 }
