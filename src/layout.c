@@ -211,7 +211,10 @@ static bool tiled_on (
 	struct honey_window *window,
 	struct honey_workspace *workspace
 ) {
-	return window->mapped && window->workspace == workspace
+	/* Placed-but-unmapped windows (slot reserved at first commit) tile too,
+	 * so their initial configure already carries the final size. */
+	return (window->mapped || window->placed)
+		&& window->workspace == workspace
 		&& honey_window_is_tiled(window);
 }
 

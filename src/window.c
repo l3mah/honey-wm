@@ -73,7 +73,8 @@ void honey_window_configure (
 				(int)round(width * scale), (int)round(height * scale));
 	} else {
 		if (!same_size)
-			wlr_xdg_toplevel_set_size(window->xdg_toplevel, width, height);
+			window->resize_serial = wlr_xdg_toplevel_set_size(
+					window->xdg_toplevel, width, height);
 	}
 }
 
@@ -469,7 +470,8 @@ void honey_window_handle_map (struct honey_window *window) {
 	struct honey_server *server = window->server;
 
 	window->mapped = true;
-	window->workspace = server->focused_output->active;
+	if (!window->placed) /* XDG windows reserved their slot at first commit */
+		window->workspace = server->focused_output->active;
 	free(window->initial_title);
 	window->initial_title = strdup(honey_window_title(window));
 
@@ -532,10 +534,13 @@ void honey_window_handle_map (struct honey_window *window) {
 	wl_signal_add(&window->foreign->events.request_close,
 			&window->foreign_close);
 
-	if (server->config.new_window_master)
-		wl_list_insert(&server->windows, &window->link);       /* master */
-	else
-		wl_list_insert(server->windows.prev, &window->link);   /* stack tail */
+	if (!window->placed) {
+		if (server->config.new_window_master)
+			wl_list_insert(&server->windows, &window->link);     /* master */
+		else
+			wl_list_insert(server->windows.prev, &window->link); /* tail */
+		window->placed = true;
+	}
 
 	honey_arrange(server);
 	if (server->config.focus_new && !covered && !no_focus)
@@ -560,6 +565,7 @@ void honey_window_handle_unmap (struct honey_window *window) {
 
 	window->mapped = false;
 	wl_list_remove(&window->link);
+	window->placed = false;
 	if (server->focused == window)
 		server->focused = NULL;
 	if (server->op_window == window) { /* grabbed window went away */
@@ -590,15 +596,35 @@ static void window_unmap (
 	honey_window_handle_unmap(window);
 }
 
+/* Reserve the tile at the first commit, before the window maps: assign the
+ * workspace, join the window list, and arrange, so the initial configure
+ * already carries the exact slot size (plus tiled states) and the first
+ * buffer tiles perfectly instead of flashing at the app's own size. */
+static void window_reserve (struct honey_window *window) {
+	struct honey_server *server = window->server;
+	window->workspace = server->focused_output->active;
+	window->placed = true;
+	if (server->config.new_window_master)
+		wl_list_insert(&server->windows, &window->link);
+	else
+		wl_list_insert(server->windows.prev, &window->link);
+	honey_window_inform_states(window);
+	honey_arrange(server);
+}
+
 static void window_commit (
 	struct wl_listener *listener,
 	void *data
 ) {
 	struct honey_window *window = wl_container_of(listener, window, commit);
-	/* Reply to the initial configure so the client can proceed to map; 0,0
-	 * lets it pick its own initial size before the layout sizes it. */
+	/* Reply to the initial configure so the client can proceed to map.
+	 * Dialogs and float-bound windows pick their own size (0,0); tiling-bound
+	 * windows are placed now, sized by the layout before they ever draw. */
 	if (window->xdg_toplevel->base->initial_commit) {
-		wlr_xdg_toplevel_set_size(window->xdg_toplevel, 0, 0);
+		if (!window_wants_floating(window) && window->server->focused_output)
+			window_reserve(window);
+		else
+			wlr_xdg_toplevel_set_size(window->xdg_toplevel, 0, 0);
 		return;
 	}
 
@@ -607,6 +633,15 @@ static void window_commit (
 	struct wlr_box *geometry = &window->xdg_toplevel->base->geometry;
 	if (geometry->width <= 0 || geometry->height <= 0)
 		return;
+
+	/* While our own resize is in flight, commits still carry the previous
+	 * geometry; adopting it as a "self-resize" would fight the request. */
+	if (window->resize_serial != 0) {
+		if (window->xdg_toplevel->base->current.configure_serial
+				< window->resize_serial)
+			return;
+		window->resize_serial = 0;
+	}
 
 	/* float-app-size: adopt the app's chosen size, re-centred, once. */
 	if (window->float_pending_app_size) {
@@ -668,6 +703,10 @@ static void window_destroy (
 	void *data
 ) {
 	struct honey_window *window = wl_container_of(listener, window, destroy);
+	if (window->placed) { /* reserved at first commit but never mapped */
+		wl_list_remove(&window->link);
+		honey_arrange(window->server);
+	}
 	wl_list_remove(&window->map.link);
 	wl_list_remove(&window->unmap.link);
 	wl_list_remove(&window->commit.link);

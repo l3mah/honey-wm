@@ -299,6 +299,8 @@ struct honey_window {
 	struct wlr_scene_rect *dim;          /* dim-inactive overlay */
 	struct wlr_box geom; /* current geometry */
 	struct wlr_box requested; /* last configure request (duplicate dedupe) */
+	uint32_t resize_serial; /* pending size request not yet acked (XDG) */
+	bool placed; /* in server.windows with a reserved slot (may predate map) */
 	bool mapped;
 
 	/* window states (mutually exclusive) */
