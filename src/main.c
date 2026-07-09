@@ -188,6 +188,32 @@ int main (
 	wl_display_run(server.display);
 
 	wl_display_destroy_clients(server.display);
+
+	/* wlroots asserts that no listeners remain on its globals at destroy;
+	 * unhook everything registered on managers that live until then. */
+	wl_list_remove(&server.xwayland_ready.link);
+	wl_list_remove(&server.new_xwayland_surface.link);
+	wl_list_remove(&server.new_layer_surface.link);
+	wl_list_remove(&server.new_output.link);
+	wl_list_remove(&server.output_manager_apply.link);
+	wl_list_remove(&server.output_manager_test.link);
+	wl_list_remove(&server.output_layout_change.link);
+	wl_list_remove(&server.new_xdg_toplevel.link);
+	wl_list_remove(&server.new_xdg_popup.link);
+	wl_list_remove(&server.new_toplevel_decoration.link);
+	wl_list_remove(&server.ext_workspace_commit.link);
+	wl_list_remove(&server.new_input.link);
+	wl_list_remove(&server.request_cursor.link);
+	wl_list_remove(&server.request_set_selection.link);
+	wl_list_remove(&server.new_constraint.link);
+	wl_list_remove(&server.constraint_destroy.link);
+	wl_list_remove(&server.request_cursor_shape.link);
+	wl_list_remove(&server.new_virtual_keyboard.link);
+	wl_list_remove(&server.new_virtual_pointer.link);
+	wl_list_remove(&server.request_activate.link);
+	wl_list_remove(&server.new_idle_inhibitor.link);
+	wl_list_remove(&server.new_shortcuts_inhibitor.link);
+
 	wl_display_destroy(server.display);
 	return 0;
 }
