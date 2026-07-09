@@ -298,6 +298,7 @@ struct honey_window {
 	struct wlr_scene_rect *border[4];    /* top, bottom, left, right */
 	struct wlr_scene_rect *dim;          /* dim-inactive overlay */
 	struct wlr_box geom; /* current geometry */
+	struct wlr_box requested; /* last configure request (duplicate dedupe) */
 	bool mapped;
 
 	/* window states (mutually exclusive) */

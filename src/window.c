@@ -49,7 +49,18 @@ void honey_window_configure (
 ) {
 	wlr_scene_node_set_position(&window->surface_tree->node, x, y);
 	wlr_scene_rect_set_size(window->dim, width, height);
+
+	/* Skip duplicate requests: wlroots schedules a configure per call, so
+	 * re-sending an unchanged box on every arrange amplifies any
+	 * commit-driven arrange into an event flood. */
+	bool same_size = width == window->requested.width
+			&& height == window->requested.height;
+	bool same_position = x == window->requested.x && y == window->requested.y;
+	window->requested = (struct wlr_box){ x, y, width, height };
+
 	if (window->type == HONEY_WINDOW_X11) {
+		if (same_size && same_position)
+			return;
 		/* xwayland-scale (removable): X11 lives in the scaled xwayland
 		 * coordinate space — renders at its output's physical pixels, shown at
 		 * logical size. Remove -> plain wlr_xwayland_surface_configure. */
@@ -60,7 +71,8 @@ void honey_window_configure (
 		wlr_xwayland_surface_configure(window->xwayland_surface, xw_x, xw_y,
 				(int)round(width * scale), (int)round(height * scale));
 	} else {
-		wlr_xdg_toplevel_set_size(window->xdg_toplevel, width, height);
+		if (!same_size)
+			wlr_xdg_toplevel_set_size(window->xdg_toplevel, width, height);
 	}
 }
 

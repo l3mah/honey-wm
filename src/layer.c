@@ -106,8 +106,18 @@ static void layer_commit (
 	void *data
 ) {
 	struct honey_layer_surface *layer = wl_container_of(listener, layer, commit);
+	struct wlr_layer_surface_v1 *layer_surface = layer->layer_surface;
+
+	/* Re-arrange only when layout-relevant state changed (anchor, exclusive
+	 * zone, size, layer, ...). Plain redraw commits must not be answered with
+	 * a fresh configure: clients that redraw per configure (swaybg) would
+	 * commit again, a feedback loop that floods every client's event queue
+	 * until libwayland disconnects them. */
+	if (layer_surface->configured && layer_surface->current.committed == 0)
+		return;
+
 	wlr_scene_node_reparent(&layer->scene->tree->node,
-			layer_tree(layer->server, layer->layer_surface->current.layer));
+			layer_tree(layer->server, layer_surface->current.layer));
 	layer_rearrange(layer);
 }
 
