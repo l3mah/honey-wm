@@ -191,7 +191,8 @@ Two binaries are involved:
 
 honey sets `XDG_CURRENT_DESKTOP=honey`, `XDG_SESSION_TYPE=wayland`, and
 `DISPLAY` (once XWayland starts) for everything it spawns. Set
-`HONEY_DEBUG=1` for verbose logging to stderr.
+`HONEY_DEBUG=1` for verbose logging to stderr. Ctrl+alt+F1 through F12
+switch virtual terminals, as everywhere else.
 
 ## Configuration
 
@@ -218,7 +219,8 @@ honeyctl kb-repeat 25 600
 honeyctl input "*" natural-scroll on
 
 # keys
-honeyctl map super+Return "spawn alacritty"
+honeyctl map super+Return "exec alacritty"
+honeyctl map super+F7 "gamma brightness +5"
 honeyctl map super+shift+q close
 honeyctl map super+j focus-next
 honeyctl map super+k focus-prev
@@ -228,9 +230,9 @@ honeyctl map super+0 "workspace 10"
 honeyctl rule app-id mpv float
 honeyctl rule title-re "^Picture-in-Picture$" float 30% 30%
 
-# autostart
-waybar &
-swaybg -i ~/wallpaper.png &
+# autostart (exec-once runs once per session; a reload will not duplicate)
+honeyctl exec-once waybar
+honeyctl exec-once "swaybg -i ~/wallpaper.png"
 ```
 
 Three properties fall out of this design:
@@ -243,7 +245,9 @@ Three properties fall out of this design:
   line fails, a floating terminal pops up listing the errors (`set
   error-window false` sends them to
   `$XDG_RUNTIME_DIR/honey-init-errors.log` instead). The same happens at
-  startup, so a typo in your init never fails silently.
+  startup, so a typo in your init never fails silently. Daemons started with
+  `exec-once` are remembered by the compositor, so a reload never duplicates
+  them.
 - **Tools are easy to build on.** Anything that can write to a Unix socket can
   drive honey; anything that can read one can follow it (see
   [the status stream](#the-status-stream)). The
@@ -261,8 +265,8 @@ stderr with a non-zero exit code.
 
 ## Command reference
 
-Every command below is a `honeyctl` invocation. Multi-word arguments (like a
-`spawn` command line) can be quoted at the shell level.
+Every command below is a `honeyctl` invocation. Multi-word arguments (like an
+`exec` command line) can be quoted at the shell level.
 
 ### Settings: `set` and `get`
 
@@ -344,7 +348,8 @@ from a script. Directions are `left`, `right`, `up`, `down`.
 
 | Action | Effect |
 |---|---|
-| `spawn <command...>` | run a command (inherits honey's environment) |
+| `exec <command...>` | run a command (inherits honey's environment) |
+| `exec-once <command...>` | run a command once per session; repeats of the exact same line are ignored, so daemons in the init survive `reload` without duplicating |
 | `close` | close the focused window |
 | `exit` | quit honey |
 | `focus-next` / `focus-prev` | cycle focus within the workspace |
@@ -370,13 +375,19 @@ from a script. Directions are `left`, `right`, `up`, `down`.
 ### Keybindings: `map`, `unmap`, `binds`
 
 ```
-map <combo> <action>
+map <combo> <command>
 unmap <combo>
 binds
 ```
 
+A binding can carry *any* command from this reference, not only actions:
+`map super+F7 gamma brightness +5`, `map super+g "set gaps-in 0"`, or
+`map super+shift+r reload` all work. `map` rejects unknown verbs when the
+init runs, so a typo shows up in the error window instead of a key that
+silently does nothing.
+
 A combo is modifiers plus one key, joined with `+`: `super+shift+q`,
-`ctrl+alt+F1`. Modifier names: `super` (also `logo`/`mod4`), `shift`, `ctrl`
+`super+F7`. Modifier names: `super` (also `logo`/`mod4`), `shift`, `ctrl`
 (`control`), `alt` (`mod1`). The key is any XKB keysym name, matched
 case-insensitively (`Return`, `Escape`, `F11`, `comma`, `0` to `9`).
 Re-mapping an existing combo replaces it. `binds` lists everything currently
@@ -388,7 +399,7 @@ Loaded **only when no init file exists**, as a usable starting point:
 
 | Combo | Action |
 |---|---|
-| `super+Return` | `spawn alacritty` |
+| `super+Return` | `exec alacritty` |
 | `super+shift+q` | `close` |
 | `super+j` / `super+k` | `focus-next` / `focus-prev` |
 | `super+shift+j` / `super+shift+k` | `swap-next` / `swap-prev` |
