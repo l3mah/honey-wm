@@ -113,7 +113,7 @@ int main (
 	server.display = wl_display_create();
 	server.event_loop = wl_display_get_event_loop(server.display);
 
-	server.backend = wlr_backend_autocreate(server.event_loop, NULL);
+	server.backend = wlr_backend_autocreate(server.event_loop, &server.session);
 	if (!server.backend) {
 		LOG("failed to create wlr_backend");
 		return 1;

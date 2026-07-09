@@ -224,13 +224,22 @@ static void dispatch (
 			rest++;
 		char *space = strchr(rest, ' ');
 		if (!space) {
-			snprintf(reply, reply_size, "error: usage: map <combo> <action>");
+			snprintf(reply, reply_size, "error: usage: map <combo> <command>");
 			return;
 		}
 		*space = '\0';
 		char *action = space + 1;
 		while (*action == ' ')
 			action++;
+
+		/* Reject unknown verbs at map time, so a typo surfaces in the error
+		 * window instead of dying silently at keypress. */
+		char verb[64] = {0};
+		sscanf(action, "%63s", verb);
+		if (!honey_command_known(verb)) {
+			snprintf(reply, reply_size, "error: unknown command '%s'", verb);
+			return;
+		}
 		if (honey_binding_add(server, rest, action))
 			snprintf(reply, reply_size, "ok");
 		else
@@ -591,11 +600,44 @@ static void dispatch (
 		return;
 	}
 
-	/* Any other line is treated as an action verb (spawn, workspace, ...). */
+	/* Any other line is treated as an action verb (exec, workspace, ...). */
 	if (honey_action_run(server, line))
 		snprintf(reply, reply_size, "ok");
 	else
 		snprintf(reply, reply_size, "error: unknown command '%s'", line);
+}
+
+/* Whether a verb is a known command or action (map-time validation; commands
+ * must match the dispatch chain above). */
+bool honey_command_known (const char *verb) {
+	static const char *commands[] = { "map", "unmap", "set", "env",
+		"kb-layout", "kb-repeat", "input", "set-ws", "workspace-name",
+		"output", "gamma", "rule", "windows", "outputs", "binds", "get",
+		"reload", "ping", "exit", NULL };
+	for (int i = 0; commands[i]; i++) {
+		if (!strcmp(verb, commands[i]))
+			return true;
+	}
+	return honey_action_known(verb);
+}
+
+/* Run one command line from a keybinding: dispatch on a scratch copy and log
+ * error replies (a keypress has no client to answer). */
+bool honey_command_run (
+	struct honey_server *server,
+	const char *line
+) {
+	char buffer[1024];
+	strncpy(buffer, line, sizeof buffer - 1);
+	buffer[sizeof buffer - 1] = '\0';
+
+	char reply[4096];
+	dispatch(server, buffer, reply, sizeof reply);
+	if (!strncmp(reply, "error", 5)) {
+		LOG("bind '%s': %s", line, reply);
+		return false;
+	}
+	return true;
 }
 
 /* -------------------------------------------------------------------- client */
@@ -694,7 +736,7 @@ void honey_ipc_setup (struct honey_server *server) {
 /* ------------------------------------------------------------ config / init */
 
 static void load_default_bindings (struct honey_server *server) {
-	honey_binding_add(server, "super+Return", "spawn alacritty");
+	honey_binding_add(server, "super+Return", "exec alacritty");
 	honey_binding_add(server, "super+shift+q", "close");
 	honey_binding_add(server, "super+j", "focus-next");
 	honey_binding_add(server, "super+k", "focus-prev");

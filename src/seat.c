@@ -8,10 +8,12 @@
  * workspace cycling.
  */
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <xkbcommon/xkbcommon.h>
 
+#include <wlr/backend/session.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
@@ -24,9 +26,9 @@
 
 #include "honey.h"
 
-/* --------------------------------------------------------------------- spawn */
+/* ---------------------------------------------------------------------- exec */
 
-void honey_spawn (const char *command) {
+void honey_exec (const char *command) {
 	if (!command || !*command)
 		return;
 	pid_t pid = fork();
@@ -39,6 +41,23 @@ void honey_spawn (const char *command) {
 		execl("/bin/sh", "/bin/sh", "-c", command, (char *)NULL);
 		_exit(127);
 	}
+}
+
+/* Run a command once per session: the exact command line is remembered on the
+ * server, so init re-runs (reload) do not duplicate daemons. */
+void honey_exec_once (
+	struct honey_server *server,
+	const char *command
+) {
+	struct honey_exec_once *entry;
+	wl_list_for_each(entry, &server->exec_once, link) {
+		if (!strcmp(entry->command, command))
+			return;
+	}
+	entry = calloc(1, sizeof *entry);
+	entry->command = strdup(command);
+	wl_list_insert(&server->exec_once, &entry->link);
+	honey_exec(command);
 }
 
 /* ---------------------------------------------------------------- keyboards */
@@ -67,7 +86,25 @@ static void keyboard_key (
 	uint32_t modifiers = wlr_keyboard_get_modifiers(wlr_keyboard);
 
 	bool handled = false;
-	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED
+	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+		/* VT switching: the keymap yields XF86Switch_VT_N for ctrl+alt+FN,
+		 * and changing VTs is the compositor's job on the DRM backend. Kept
+		 * outside the shortcuts-inhibit gate as the escape hatch. */
+		const xkb_keysym_t *translated;
+		int translated_count = xkb_state_key_get_syms(
+				wlr_keyboard->xkb_state, keycode, &translated);
+		for (int i = 0; i < translated_count; i++) {
+			if (translated[i] < XKB_KEY_XF86Switch_VT_1
+					|| translated[i] > XKB_KEY_XF86Switch_VT_12)
+				continue;
+			if (server->session) {
+				wlr_session_change_vt(server->session,
+						translated[i] - XKB_KEY_XF86Switch_VT_1 + 1);
+				handled = true;
+			}
+		}
+	}
+	if (!handled && event->state == WL_KEYBOARD_KEY_STATE_PRESSED
 			&& !honey_shortcuts_inhibited(server)) {
 		/* Match at level 0 so shifted binds resolve to the base symbol
 		 * (Super+Shift+1 -> 1, not exclam). */

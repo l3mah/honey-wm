@@ -116,7 +116,9 @@ bool honey_binding_run (
 	struct honey_keybind *keybind;
 	wl_list_for_each(keybind, &server->keybinds, link) {
 		if (keybind->sym == sym && keybind->modifiers == relevant) {
-			honey_action_run(server, keybind->action);
+			/* Full command dispatch, so a key can carry anything the control
+			 * socket accepts (gamma, set, reload, ...), not only actions. */
+			honey_command_run(server, keybind->action);
 			return true;
 		}
 	}
@@ -157,9 +159,12 @@ bool honey_action_run (
 			arg = NULL;
 	}
 
-	if (!strcmp(verb, "spawn")) {
+	if (!strcmp(verb, "exec")) {
 		if (arg)
-			honey_spawn(arg);
+			honey_exec(arg);
+	} else if (!strcmp(verb, "exec-once")) {
+		if (arg)
+			honey_exec_once(server, arg);
 	} else if (!strcmp(verb, "close")) {
 		honey_action_close(server);
 	} else if (!strcmp(verb, "toggle-float")) {
@@ -225,8 +230,26 @@ bool honey_action_run (
 	return true;
 }
 
+/* Whether a verb is a known action (for map-time validation; keep in sync
+ * with the dispatch chain above). */
+bool honey_action_known (const char *verb) {
+	static const char *verbs[] = { "exec", "exec-once", "close",
+		"toggle-float", "fullscreen", "maximize", "fake-fullscreen", "exit",
+		"focus-next", "focus-prev", "swap-next", "swap-prev", "swap-master",
+		"swap-dir", "master-mfact", "master-nmaster", "master-orientation",
+		"master-orientationcycle", "workspace", "move-to-workspace",
+		"workspace-back", "workspace-next", "workspace-prev", "focus-dir",
+		"focus-output", "move-to-output", NULL };
+	for (int i = 0; verbs[i]; i++) {
+		if (!strcmp(verb, verbs[i]))
+			return true;
+	}
+	return false;
+}
+
 /* -------------------------------------------------------------------- setup */
 
 void honey_binding_setup (struct honey_server *server) {
 	wl_list_init(&server->keybinds);
+	wl_list_init(&server->exec_once);
 }

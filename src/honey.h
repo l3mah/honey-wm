@@ -125,6 +125,7 @@ struct honey_server {
 	struct wl_display *display;
 	struct wl_event_loop *event_loop;
 	struct wlr_backend *backend;
+	struct wlr_session *session; /* NULL when nested or headless */
 	struct wlr_renderer *renderer;
 	struct wlr_allocator *allocator;
 
@@ -167,8 +168,9 @@ struct honey_server {
 	double gamma_brightness_min; /* clamp floor for brightness ops (0-1) */
 	double gamma_brightness_max; /* clamp ceiling for brightness ops (0-1) */
 
-	struct wl_list keybinds; /* honey_keybind.link */
-	struct wl_list rules;    /* honey_rule.link */
+	struct wl_list keybinds;  /* honey_keybind.link */
+	struct wl_list rules;     /* honey_rule.link */
+	struct wl_list exec_once; /* honey_exec_once.link */
 
 	int ipc_fd; /* listening control socket, or -1 */
 	struct wl_event_source *ipc_source;
@@ -332,6 +334,12 @@ struct honey_keybind {
 	char *action; /* owned */
 };
 
+/* One exec-once command already run this session (keyed by the exact line). */
+struct honey_exec_once {
+	struct wl_list link; /* honey_server.exec_once */
+	char *command; /* owned */
+};
+
 struct honey_ipc_client {
 	struct wl_list link; /* honey_server.ipc_clients */
 	struct honey_server *server;
@@ -445,7 +453,11 @@ void honey_constraint_check (
 );
 
 void honey_arrange (struct honey_server *server);
-void honey_spawn (const char *command);
+void honey_exec (const char *command);
+void honey_exec_once (
+	struct honey_server *server,
+	const char *command
+);
 
 /* type-agnostic window accessors (XDG / X11) */
 struct wlr_surface *honey_window_surface (struct honey_window *window);
@@ -548,6 +560,12 @@ bool honey_binding_run (
 bool honey_action_run (
 	struct honey_server *server,
 	const char *action
+);
+bool honey_action_known (const char *verb);
+bool honey_command_known (const char *verb);
+bool honey_command_run (
+	struct honey_server *server,
+	const char *line
 );
 void honey_ipc_setup (struct honey_server *server);
 void honey_config_run (struct honey_server *server);
