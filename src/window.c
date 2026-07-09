@@ -463,7 +463,18 @@ static bool window_wants_floating (struct honey_window *window) {
 			return true;
 		return false;
 	}
-	return window->xdg_toplevel->parent != NULL;
+
+	/* A transient (has a parent) floats. So does a fixed-size toplevel
+	 * (min == max): non-resizable windows are dialogs, pickers, and progress
+	 * windows (e.g. a GTK file-copy dialog that sets no parent) — tiling them
+	 * stretches them to a full column. Xdg-shell has no window-type atoms, so
+	 * this size signal is the portable equivalent of the X11 types above. */
+	if (window->xdg_toplevel->parent)
+		return true;
+	struct wlr_xdg_toplevel_state *state = &window->xdg_toplevel->current;
+	return state->min_width > 0 && state->min_height > 0
+		&& state->min_width == state->max_width
+		&& state->min_height == state->max_height;
 }
 
 void honey_window_handle_map (struct honey_window *window) {
