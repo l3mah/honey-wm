@@ -811,13 +811,45 @@ struct honey_popup {
 	struct wl_listener destroy;
 };
 
+/* The root toplevel a (possibly nested) popup belongs to: walk up the scene
+ * tree to the node that carries a honey_window. */
+static struct honey_window *popup_root_window (struct wlr_xdg_popup *popup) {
+	struct wlr_scene_tree *tree = popup->base->data;
+	struct wlr_scene_node *node = tree ? &tree->node : NULL;
+	while (node) {
+		if (node->data)
+			return node->data;
+		node = node->parent ? &node->parent->node : NULL;
+	}
+	return NULL;
+}
+
 static void popup_commit (
 	struct wl_listener *listener,
 	void *data
 ) {
 	struct honey_popup *popup = wl_container_of(listener, popup, commit);
-	if (popup->popup->base->initial_commit)
-		wlr_xdg_surface_schedule_configure(popup->popup->base);
+	if (!popup->popup->base->initial_commit)
+		return;
+
+	/* Reposition the popup to fit its output (flip/slide per its positioner),
+	 * so a menu opened near an edge stays on screen instead of overflowing.
+	 * The box is the usable area in the root toplevel's surface coordinates. */
+	struct honey_window *window = popup_root_window(popup->popup);
+	if (window && window->mapped && window->workspace) {
+		int lx, ly;
+		wlr_scene_node_coords(&window->surface_tree->node, &lx, &ly);
+		struct wlr_box *usable = &window->workspace->output->usable;
+		struct wlr_box box = {
+			.x = usable->x - lx,
+			.y = usable->y - ly,
+			.width = usable->width,
+			.height = usable->height,
+		};
+		wlr_xdg_popup_unconstrain_from_box(popup->popup, &box);
+	}
+
+	wlr_xdg_surface_schedule_configure(popup->popup->base);
 }
 
 static void popup_destroy (
