@@ -149,6 +149,7 @@ void honey_window_clear_states (struct honey_window *window) {
 	window->fullscreen = false;
 	window->maximized = false;
 	window->fake_fullscreen = false;
+	window->auto_centered = false;
 	honey_window_inform_states(window);
 	honey_window_update_layer(window);
 }
@@ -515,6 +516,7 @@ void honey_window_handle_map (struct honey_window *window) {
 	/* Dialog-class windows float centred at their own size rather than tiling. */
 	if (window_wants_floating(window)) {
 		window->floating = true;
+		window->auto_centered = true; /* keep centred while it settles */
 		honey_window_update_layer(window);
 		if (window->type == HONEY_WINDOW_X11) {
 			/* xwayland-scale (removable): X11 reports its size in the scaled
@@ -701,12 +703,20 @@ static void window_commit (
 	}
 
 	/* Track a client that resizes itself (e.g. a dialog changing tabs) so the
-	 * border keeps framing the actual window instead of the previous size. */
+	 * border keeps framing the actual window instead of the previous size. An
+	 * auto-floated dialog re-centres as it settles (it lands over several
+	 * commits); once the user moves or resizes it, auto_centered clears and its
+	 * position is left alone. */
 	int border = window->server->config.border_size;
 	if (window->float_geom.width != geometry->width + 2 * border
 			|| window->float_geom.height != geometry->height + 2 * border) {
-		window->float_geom.width = geometry->width + 2 * border;
-		window->float_geom.height = geometry->height + 2 * border;
+		if (window->auto_centered) {
+			honey_window_set_float_geom(window, geometry->width + 2 * border,
+					geometry->height + 2 * border);
+		} else {
+			window->float_geom.width = geometry->width + 2 * border;
+			window->float_geom.height = geometry->height + 2 * border;
+		}
 		honey_arrange(window->server);
 	}
 }
@@ -759,6 +769,7 @@ static void window_parent_changed (
 			|| !window->xdg_toplevel->parent)
 		return;
 	window->floating = true;
+	window->auto_centered = true; /* keep centred while it settles */
 	honey_window_update_layer(window);
 	honey_window_inform_states(window);
 	xdg_float_natural(window);

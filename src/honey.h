@@ -312,6 +312,8 @@ struct honey_window {
 	bool floating;
 	struct wlr_box float_geom; /* geometry while floating */
 	bool float_pending_app_size; /* adopt the app's own size on next commit */
+	bool auto_centered; /* auto-floated dialog: keep centred as its size settles,
+	                     * until the user moves or resizes it */
 	bool fullscreen;
 	bool maximized;
 	bool fake_fullscreen; /* fill output + tell the client, not exclusive */

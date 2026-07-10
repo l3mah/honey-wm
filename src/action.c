@@ -262,6 +262,9 @@ void honey_float_seed (struct honey_window *window) {
 	struct honey_server *server = window->server;
 	struct wlr_box *usable = &window->workspace->output->usable;
 
+	/* Forced floats (rules, toggle-float) own their placement; not auto-centred. */
+	window->auto_centered = false;
+
 	int width, height;
 	if (server->config.float_app_size && window->type == HONEY_WINDOW_X11) {
 		/* xwayland-scale (removable): X11 reports its size in the scaled

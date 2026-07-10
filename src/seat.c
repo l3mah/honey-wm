@@ -226,6 +226,7 @@ static void op_begin (
 	if (window->fullscreen || window->maximized)
 		return;
 
+	window->auto_centered = false; /* user takes control of its placement */
 	server->op_was_tiled = honey_window_is_tiled(window);
 	if (server->op_was_tiled) {
 		window->floating = true;
