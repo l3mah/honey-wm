@@ -298,7 +298,12 @@ void honey_arrange (struct honey_server *server) {
 
 	struct honey_window *window;
 	wl_list_for_each(window, &server->windows, link) {
-		bool visible = window->mapped && window->workspace
+		/* A window awaiting the client's own float size stays hidden until it
+		 * commits it (window_commit clears the flag): otherwise the stretched
+		 * placeholder buffer flashes and the smaller buffer lands at that
+		 * placeholder's corner before the next arrange re-centres it. */
+		bool visible = window->mapped && !window->float_pending_app_size
+			&& window->workspace
 			&& window->workspace->output->active == window->workspace;
 		wlr_scene_node_set_enabled(&window->tree->node, visible);
 		wlr_scene_node_set_enabled(&window->surface_tree->node, visible);

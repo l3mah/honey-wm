@@ -532,8 +532,22 @@ void honey_window_handle_map (struct honey_window *window) {
 			if (height <= 0 || height > usable->height)
 				height = (int)(usable->height * 0.4);
 			honey_window_set_float_geom(window, width, height);
-		} else {
+		} else if (window->placed) {
+			/* Reserved as a tile before its dialog nature was known: its
+			 * geometry is the stretched tile size, so recover the client's own
+			 * size (0,0 adopt). Stays hidden until it commits that size. */
 			xdg_float_natural(window);
+		} else {
+			/* Parented from the start, never reserved: the geometry is already
+			 * the client's own size — use it directly, centred, shown at once. */
+			struct wlr_box *g = &window->xdg_toplevel->base->geometry;
+			int width = g->width, height = g->height;
+			struct wlr_box *usable = &window->workspace->output->usable;
+			if (width <= 0 || width > usable->width)
+				width = (int)(usable->width * 0.4);
+			if (height <= 0 || height > usable->height)
+				height = (int)(usable->height * 0.4);
+			honey_window_set_float_geom(window, width, height);
 		}
 	}
 
