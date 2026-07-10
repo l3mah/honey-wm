@@ -205,6 +205,8 @@ int main (
 	wl_list_remove(&server.new_input.link);
 	wl_list_remove(&server.request_cursor.link);
 	wl_list_remove(&server.request_set_selection.link);
+	wl_list_remove(&server.request_start_drag.link);
+	wl_list_remove(&server.start_drag.link);
 	wl_list_remove(&server.new_constraint.link);
 	wl_list_remove(&server.constraint_destroy.link);
 	wl_list_remove(&server.request_cursor_shape.link);

@@ -26,6 +26,8 @@
 
 #include "honey.h"
 
+static void honey_drag_icon_update (struct honey_server *server);
+
 /* ---------------------------------------------------------------------- exec */
 
 void honey_exec (const char *command) {
@@ -380,7 +382,9 @@ static void pointer_focus (
 		window = window_from_node(node);
 	}
 
-	if (server->config.follow_mouse) {
+	/* Don't refocus/raise windows mid-drag: the pointer is grabbed by the drag,
+	 * and the motion below still forwards to the surface under it for the drop. */
+	if (server->config.follow_mouse && !server->dragging) {
 		if (window) {
 			honey_focus_window(window);
 		} else {
@@ -430,6 +434,7 @@ static void cursor_motion (
 
 	wlr_cursor_move(server->cursor, &event->pointer->base,
 			event->delta_x, event->delta_y);
+	honey_drag_icon_update(server);
 	if (server->op != HONEY_OP_NONE) {
 		op_motion(server);
 		return;
@@ -446,6 +451,7 @@ static void cursor_motion_absolute (
 	struct wlr_pointer_motion_absolute_event *event = data;
 	wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
 			event->x, event->y);
+	honey_drag_icon_update(server);
 	if (server->op != HONEY_OP_NONE) {
 		op_motion(server);
 		return;
@@ -580,6 +586,63 @@ static void request_set_selection (
 	wlr_seat_set_selection(server->seat, event->source, event->serial);
 }
 
+/* ----------------------------------------------------------- drag-and-drop */
+
+/* Keep the drag icon under the cursor. */
+static void honey_drag_icon_update (struct honey_server *server) {
+	if (server->drag_icon)
+		wlr_scene_node_set_position(&server->drag_icon->node,
+				(int)server->cursor->x, (int)server->cursor->y);
+}
+
+static void drag_destroy (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct honey_server *server = wl_container_of(listener, server, drag_destroy);
+	wl_list_remove(&server->drag_destroy.link);
+	server->dragging = false;
+	server->drag_icon = NULL; /* the scene icon is freed with the wlr_drag_icon */
+}
+
+/* A client began a data-device drag (files from a file manager, text from an
+ * editor). Show its icon if any and follow the cursor; wlroots' drag grab
+ * routes the drop to the surface under the pointer. */
+static void handle_start_drag (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct honey_server *server = wl_container_of(listener, server, start_drag);
+	struct wlr_drag *drag = data;
+
+	server->dragging = true;
+	server->drag_destroy.notify = drag_destroy;
+	wl_signal_add(&drag->events.destroy, &server->drag_destroy);
+
+	if (drag->icon) {
+		server->drag_icon = wlr_scene_drag_icon_create(
+				server->layers[HONEY_LAYER_OVERLAY], drag->icon);
+		honey_drag_icon_update(server);
+	}
+}
+
+/* Validate the grab serial before letting a client start a drag (else a stale
+ * request could hijack the pointer); destroy the source on a bad serial. */
+static void request_start_drag (
+	struct wl_listener *listener,
+	void *data
+) {
+	struct honey_server *server =
+		wl_container_of(listener, server, request_start_drag);
+	struct wlr_seat_request_start_drag_event *event = data;
+
+	if (wlr_seat_validate_pointer_grab_serial(server->seat, event->origin,
+			event->serial))
+		wlr_seat_start_pointer_drag(server->seat, event->drag, event->serial);
+	else if (event->drag->source)
+		wlr_data_source_destroy(event->drag->source);
+}
+
 /* -------------------------------------------------------------------- setup */
 
 void honey_seat_setup (struct honey_server *server) {
@@ -613,4 +676,9 @@ void honey_seat_setup (struct honey_server *server) {
 	server->request_set_selection.notify = request_set_selection;
 	wl_signal_add(&server->seat->events.request_set_selection,
 			&server->request_set_selection);
+	server->request_start_drag.notify = request_start_drag;
+	wl_signal_add(&server->seat->events.request_start_drag,
+			&server->request_start_drag);
+	server->start_drag.notify = handle_start_drag;
+	wl_signal_add(&server->seat->events.start_drag, &server->start_drag);
 }

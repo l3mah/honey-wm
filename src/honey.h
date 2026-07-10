@@ -198,6 +198,11 @@ struct honey_server {
 	struct wl_listener cursor_frame;
 	struct wl_listener request_cursor;
 	struct wl_listener request_set_selection;
+	struct wl_listener request_start_drag;
+	struct wl_listener start_drag;
+	struct wl_listener drag_destroy;
+	struct wlr_scene_tree *drag_icon; /* active drag-and-drop icon, or NULL */
+	bool dragging;                    /* a data-device drag is in progress */
 
 	/* interactive pointer operation (super+drag move/resize) */
 	enum { HONEY_OP_NONE, HONEY_OP_MOVE, HONEY_OP_RESIZE } op;
