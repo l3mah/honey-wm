@@ -170,6 +170,7 @@ bool honey_config_set (
 		wlr_xcursor_manager_destroy(server->xcursor_manager);
 		server->xcursor_manager = wlr_xcursor_manager_create(
 				server->cursor_theme, server->cursor_size);
+		honey_cursor_reload(server); /* load the new theme at every output scale */
 		wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager,
 				"default");
 	} else if (!strcmp(key, "layout")) {

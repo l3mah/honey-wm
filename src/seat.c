@@ -653,6 +653,21 @@ static void request_start_drag (
 
 /* -------------------------------------------------------------------- setup */
 
+/* Load the cursor theme at every output's scale. Without the bitmap at an
+ * output's scale, wlroots can't put the cursor on that output's hardware plane
+ * and falls back to a software cursor there: on a scaled 4K output that means
+ * a full re-composite (and a visible trail) on every pointer move. Idempotent;
+ * call whenever a scale, the theme, or the set of outputs changes. */
+void honey_cursor_reload (struct honey_server *server) {
+	if (!server->xcursor_manager)
+		return;
+	wlr_xcursor_manager_load(server->xcursor_manager, 1.0);
+	struct honey_output *output;
+	wl_list_for_each(output, &server->outputs, link)
+		wlr_xcursor_manager_load(server->xcursor_manager,
+				output->wlr_output->scale);
+}
+
 void honey_seat_setup (struct honey_server *server) {
 	wl_list_init(&server->keyboards);
 
@@ -661,6 +676,7 @@ void honey_seat_setup (struct honey_server *server) {
 	server->cursor_size = 24;
 	server->xcursor_manager = wlr_xcursor_manager_create(NULL,
 			server->cursor_size);
+	honey_cursor_reload(server);
 
 	server->cursor_motion.notify = cursor_motion;
 	wl_signal_add(&server->cursor->events.motion, &server->cursor_motion);

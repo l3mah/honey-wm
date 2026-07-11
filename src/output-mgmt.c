@@ -243,6 +243,10 @@ bool honey_output_command (
 		wlr_output_layout_add(server->output_layout, wlr_output, pos_x, pos_y);
 	else
 		wlr_output_layout_add_auto(server->output_layout, wlr_output);
+
+	/* A scale change needs the cursor loaded at the new scale for a hardware
+	 * cursor (else it falls back to an expensive software cursor here). */
+	honey_cursor_reload(server);
 	return true;
 }
 

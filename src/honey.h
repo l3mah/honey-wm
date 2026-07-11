@@ -453,6 +453,7 @@ bool honey_output_command (
 );
 void honey_window_setup (struct honey_server *server);
 void honey_seat_setup (struct honey_server *server);
+void honey_cursor_reload (struct honey_server *server);
 void honey_seat_new_keyboard (
 	struct honey_server *server,
 	struct wlr_input_device *device

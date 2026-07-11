@@ -157,6 +157,9 @@ static void handle_new_output (
 	wlr_output_layout_get_box(server->output_layout, wlr_output,
 			&output->usable);
 
+	/* Load the cursor at this output's scale for a hardware cursor here. */
+	honey_cursor_reload(server);
+
 	output->active = honey_workspace_get(output, 1);
 	if (!server->focused_output)
 		server->focused_output = output;
