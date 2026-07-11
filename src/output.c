@@ -42,18 +42,27 @@ static void output_frame (
 	struct wlr_scene_output *scene_output =
 		wlr_scene_get_scene_output(output->server->scene, output->wlr_output);
 
-	/* Gamma is committed separately as a sticky CRTC property (gamma.c). */
-	struct wlr_output_state state;
-	wlr_output_state_init(&state);
-	if (wlr_scene_output_build_state(scene_output, &state, NULL)) {
-		if (tearing_wanted(output))
+	/* Tearing needs a manual async page-flip; everything else goes through
+	 * wlr_scene_output_commit, which owns both the render and the commit and so
+	 * can fall back to a composited frame when a direct-scanout buffer can't be
+	 * imported. The old manual build+commit didn't tell wlr_scene the commit
+	 * failed, so it re-picked the same unscannable buffer every vblank and
+	 * busy-looped a static output at full refresh (a wallpaper with an AMD
+	 * tiled modifier that can't be scanned out). */
+	bool committed = false;
+	if (tearing_wanted(output)) {
+		struct wlr_output_state state;
+		wlr_output_state_init(&state);
+		if (wlr_scene_output_build_state(scene_output, &state, NULL)) {
 			state.tearing_page_flip = true;
-		if (!wlr_output_commit_state(output->wlr_output, &state)) {
-			state.tearing_page_flip = false;
-			wlr_output_commit_state(output->wlr_output, &state);
+			committed = wlr_output_commit_state(output->wlr_output, &state);
+		} else {
+			committed = true; /* no damage this frame */
 		}
+		wlr_output_state_finish(&state);
 	}
-	wlr_output_state_finish(&state);
+	if (!committed)
+		wlr_scene_output_commit(scene_output, NULL);
 
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
