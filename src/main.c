@@ -86,7 +86,8 @@ int main (
 		}
 	}
 
-	wlr_log_init(WLR_INFO, NULL);
+	/* HONEY_DEBUG raises wlroots to DEBUG (cursor/DRM/render diagnostics). */
+	wlr_log_init(getenv("HONEY_DEBUG") ? WLR_DEBUG : WLR_INFO, NULL);
 
 	/* Reap spawned children with a handler, not SIG_IGN: an ignored SIGCHLD
 	 * survives exec, and Xwayland inheriting it breaks its xkbcomp Popen
