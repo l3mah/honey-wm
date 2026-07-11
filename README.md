@@ -326,6 +326,7 @@ prints the current value. Booleans accept `true/false`, `on/off`, `yes/no`,
 | `scroll-workspace` | `true` | super+scroll cycles workspaces |
 | `allow-tearing` | `false` | honor tearing hints for fullscreen clients (gaming) |
 | `error-window` | `true` | show init/reload errors in a floating terminal |
+| `suspend-hidden` | `true` | tell windows on hidden workspaces to throttle rendering (saves CPU for backgrounded browsers/editors; playback continues) |
 | `xwayland-scale` | `off` | X11 HiDPI mode: `off`, `auto`, or a scale 1.0 to 4.0; see [XWayland & HiDPI](#xwayland--hidpi) |
 
 ### Per-workspace overrides: `set-ws`

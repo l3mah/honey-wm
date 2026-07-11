@@ -115,6 +115,7 @@ struct honey_config {
 	double inactive_opacity;
 	double dim_inactive; /* 0 = off, else dim strength 0..1 */
 	bool error_window;   /* show config errors in a floating terminal */
+	bool suspend_hidden; /* tell windows on hidden workspaces to throttle */
 	double xwayland_scale; /* 0 = off, else the X11 render scale */
 	bool xwayland_scale_auto; /* follow the highest output scale */
 };
@@ -183,6 +184,7 @@ struct honey_server {
 	struct wlr_xcursor_manager *xcursor_manager;
 	char *cursor_theme; /* NULL = XCURSOR_THEME env / default */
 	int cursor_size;
+	bool cursor_is_default; /* honey set the default image (not a client's) */
 	struct wl_list keyboards; /* honey_keyboard.link */
 	struct wl_listener new_input;
 
@@ -307,6 +309,7 @@ struct honey_window {
 	uint32_t resize_serial; /* pending size request not yet acked (XDG) */
 	bool placed; /* in server.windows with a reserved slot (may predate map) */
 	bool mapped;
+	bool suspended; /* XDG: last suspended state sent (hidden-workspace throttle) */
 
 	/* window states (mutually exclusive) */
 	bool floating;

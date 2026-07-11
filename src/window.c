@@ -958,7 +958,8 @@ void honey_window_setup (struct honey_server *server) {
 	wl_list_init(&server->windows);
 	server->foreign_toplevel_manager =
 		wlr_foreign_toplevel_manager_v1_create(server->display);
-	server->xdg_shell = wlr_xdg_shell_create(server->display, 3);
+	/* v6 for the toplevel `suspended` state (hidden-workspace throttling). */
+	server->xdg_shell = wlr_xdg_shell_create(server->display, 6);
 	server->new_xdg_toplevel.notify = new_xdg_toplevel;
 	wl_signal_add(&server->xdg_shell->events.new_toplevel,
 			&server->new_xdg_toplevel);

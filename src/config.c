@@ -42,6 +42,7 @@ void honey_config_defaults (struct honey_config *config) {
 	config->inactive_opacity = 1.0;
 	config->dim_inactive = 0.0;
 	config->error_window = true;
+	config->suspend_hidden = true;
 }
 
 /* ------------------------------------------------------------------ parsers */
@@ -138,6 +139,8 @@ bool honey_config_set (
 		config->dim_inactive = atof(value);
 	} else if (!strcmp(key, "error-window")) {
 		config->error_window = parse_bool(value);
+	} else if (!strcmp(key, "suspend-hidden")) {
+		config->suspend_hidden = parse_bool(value);
 	} else if (!strcmp(key, "xwayland-scale")) { /* xwayland-scale (removable) */
 		if (!strcasecmp(value, "off")) {
 			config->xwayland_scale = 0;
@@ -263,6 +266,7 @@ bool honey_config_get (
 		{ "inactive-opacity", V_DOUBLE, &config->inactive_opacity },
 		{ "dim-inactive", V_DOUBLE, &config->dim_inactive },
 		{ "error-window", V_BOOL, &config->error_window },
+		{ "suspend-hidden", V_BOOL, &config->suspend_hidden },
 	};
 
 	for (size_t i = 0; i < sizeof keys / sizeof keys[0]; i++) {

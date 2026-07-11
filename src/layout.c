@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
+#include <wlr/types/wlr_xdg_shell.h>
 
 #include "honey.h"
 
@@ -307,6 +308,18 @@ void honey_arrange (struct honey_server *server) {
 			&& window->workspace->output->active == window->workspace;
 		wlr_scene_node_set_enabled(&window->tree->node, visible);
 		wlr_scene_node_set_enabled(&window->surface_tree->node, visible);
+
+		/* Tell a mapped window on a hidden workspace it is suspended, so it can
+		 * throttle rendering (mainly Chromium-family apps that ignore the
+		 * frame-callback throttling). Only on change, and only for XDG. */
+		if (window->type == HONEY_WINDOW_XDG && window->mapped) {
+			bool suspend = server->config.suspend_hidden && !visible;
+			if (suspend != window->suspended) {
+				window->suspended = suspend;
+				wlr_xdg_toplevel_set_suspended(window->xdg_toplevel, suspend);
+				DBG("suspend %s -> %d", honey_window_app_id(window), suspend);
+			}
+		}
 
 		/* Keep the foreign-toplevel output association in sync with actual
 		 * visibility: a window on a hidden workspace is on no output, a moved

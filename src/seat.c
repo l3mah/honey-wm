@@ -408,9 +408,16 @@ static void pointer_focus (
 		}
 		wlr_seat_pointer_notify_enter(server->seat, surface, sx, sy);
 		wlr_seat_pointer_notify_motion(server->seat, time_msec, sx, sy);
+		/* The client owns the cursor image over its surface. */
+		server->cursor_is_default = false;
 	} else {
-		wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager,
-				"default");
+		/* Over the root/gaps: set the default image once, not every motion
+		 * event — re-uploading it per event spiked CPU on fast movement. */
+		if (!server->cursor_is_default) {
+			wlr_cursor_set_xcursor(server->cursor, server->xcursor_manager,
+					"default");
+			server->cursor_is_default = true;
+		}
 		wlr_seat_pointer_notify_clear_focus(server->seat);
 	}
 	honey_constraint_check(server, surface);
