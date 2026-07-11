@@ -9,7 +9,7 @@
 # sha256 of the release tarball). The wlroots pin is `wlroots0.20-devel`; when
 # honey retargets wlroots 0.21, bump the major/minor and swap to wlroots0.21-devel.
 pkgname=honey
-version=0.20.13
+version=0.20.14
 revision=1
 build_style=gnu-makefile
 make_install_args="PREFIX=/usr"
@@ -22,7 +22,7 @@ maintainer="Maxence Hamel <dev@maxencehamel.com>"
 license="GPL-3.0-or-later"
 homepage="https://github.com/l3mah/honey-wm"
 distfiles="https://github.com/l3mah/honey-wm/archive/refs/tags/v${version}.tar.gz"
-checksum=90d9b8136f0e6fda32ee73134d249c8b0696f26b10bf49be81cd1c2209d4b70c
+checksum=@REPLACE_WITH_SHA256_OF_THE_RELEASE_TARBALL@
 
 post_install() {
 	vlicense LICENSE
