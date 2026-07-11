@@ -369,6 +369,28 @@ static bool rule_matches (
 	return strcasestr(value, rule->pattern) != NULL;
 }
 
+static void xdg_float_natural (struct honey_window *window);
+
+/* Float a window at the app's own natural size, centred (the `float default`
+ * rule and dialogs). XDG recovers the size via the 0,0 adopt; X11 reports its
+ * size directly. */
+static void honey_float_app_size (struct honey_window *window) {
+	window->auto_centered = true;
+	if (window->type == HONEY_WINDOW_XDG) {
+		xdg_float_natural(window);
+		return;
+	}
+	double scale = honey_output_xwayland_scale(window->workspace->output);
+	int width = (int)round(window->xwayland_surface->width / scale);
+	int height = (int)round(window->xwayland_surface->height / scale);
+	struct wlr_box *usable = &window->workspace->output->usable;
+	if (width <= 0 || width > usable->width)
+		width = (int)(usable->width * 0.4);
+	if (height <= 0 || height > usable->height)
+		height = (int)(usable->height * 0.4);
+	honey_window_set_float_geom(window, width, height);
+}
+
 /* Applied once, at map, after the workspace default is assigned. Returns
  * whether a no-focus rule matched. */
 static bool apply_rules (struct honey_window *window) {
@@ -388,6 +410,11 @@ static bool apply_rules (struct honey_window *window) {
 		}
 		case HONEY_RULE_FLOAT: {
 			window->floating = true;
+			if (rule->float_default) {
+				/* the app's own size, not honey's configured default */
+				honey_float_app_size(window);
+				break;
+			}
 			honey_float_seed(window);
 			struct wlr_box *usable = &window->workspace->output->usable;
 			int width = rule->float_w_px ? rule->float_w_px

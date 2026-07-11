@@ -101,6 +101,7 @@ static void cmd_rule (
 	char *ws_addr = NULL;
 	double float_w = 0, float_h = 0;
 	int float_w_px = 0, float_h_px = 0;
+	bool float_default = false;
 	int pattern_end; /* exclusive index into tokens */
 	char *last = tokens[count - 1];
 
@@ -123,6 +124,7 @@ static void cmd_rule (
 	} else if (count >= 3 && !strcmp(tokens[count - 2], "float")
 			&& !strcmp(last, "default")) {
 		action = HONEY_RULE_FLOAT;
+		float_default = true;
 		pattern_end = count - 2;
 	} else if (count >= 4 && !strcmp(tokens[count - 3], "float")) {
 		action = HONEY_RULE_FLOAT;
@@ -159,6 +161,7 @@ static void cmd_rule (
 	rule->float_h = float_h;
 	rule->float_w_px = float_w_px;
 	rule->float_h_px = float_h_px;
+	rule->float_default = float_default;
 	if (regex && regcomp(&rule->re, pattern,
 			REG_EXTENDED | REG_ICASE | REG_NOSUB) != 0) {
 		free(rule->pattern);

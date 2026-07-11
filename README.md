@@ -442,9 +442,9 @@ so re-running the init does not stack duplicates. Actions:
 | Action | Effect |
 |---|---|
 | `workspace <output:N\|N>` | open on that workspace |
-| `float` | float at the default size |
+| `float` | float at honey's default size (`float-width` x `float-height`) |
 | `float <W> <H>` | float at a size: `40%`, `600p`/`600px`, or a bare fraction |
-| `float default` | float at the app's own requested size |
+| `float default` | float at the app's own natural size, centred |
 | `tile` | force tiling (overrides the automatic dialog-float policy) |
 | `suppress-maximize` | ignore the app's self-maximize requests |
 | `no-focus` | map without taking focus |

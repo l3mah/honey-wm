@@ -385,6 +385,7 @@ struct honey_rule {
 	char *ws_addr;               /* WORKSPACE */
 	double float_w, float_h;     /* FLOAT fractions, 0 = default */
 	int float_w_px, float_h_px;  /* FLOAT pixels, 0 = unused */
+	bool float_default;          /* FLOAT "default": use the app's own size */
 };
 
 /* -------------------------------------------------------------- layer surface */
