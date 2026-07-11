@@ -22,7 +22,7 @@ maintainer="Maxence Hamel <dev@maxencehamel.com>"
 license="GPL-3.0-or-later"
 homepage="https://github.com/l3mah/honey-wm"
 distfiles="https://github.com/l3mah/honey-wm/archive/refs/tags/v${version}.tar.gz"
-checksum=@REPLACE_WITH_SHA256_OF_THE_RELEASE_TARBALL@
+checksum=4743d52cbe48846d407b2d6d8c2ae04b974862c9a8c3ae131d9f290e8f6c9aef
 
 post_install() {
 	vlicense LICENSE
