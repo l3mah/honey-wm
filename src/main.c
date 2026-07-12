@@ -4,6 +4,7 @@
  * scene graph, advertise the essential protocol globals, then run the Wayland
  * event loop. Output, window, and input policy live in the other modules.
  */
+#include <execinfo.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -73,6 +74,25 @@ static void reap_children (int signo) {
 	}
 }
 
+/* -------------------------------------------------------------------- crashes */
+
+/* On a fatal signal, dump a backtrace to stderr (honey's log) then re-raise so
+ * the process still dies. -rdynamic in the link makes the frames name honey's
+ * own functions even in a stripped build. */
+static void crash_handler (int sig) {
+	void *frames[64];
+	int n = backtrace(frames, 64);
+	const char *name = strsignal(sig);
+	char header[128];
+	int len = snprintf(header, sizeof header,
+			"\nhoney: FATAL signal %d (%s) — backtrace:\n", sig,
+			name ? name : "?");
+	if (write(STDERR_FILENO, header, len) < 0) { /* best effort */ }
+	backtrace_symbols_fd(frames, n, STDERR_FILENO);
+	signal(sig, SIG_DFL);
+	raise(sig);
+}
+
 /* ---------------------------------------------------------------------- main */
 
 int main (
@@ -88,6 +108,17 @@ int main (
 
 	/* HONEY_DEBUG raises wlroots to DEBUG (cursor/DRM/render diagnostics). */
 	wlr_log_init(getenv("HONEY_DEBUG") ? WLR_DEBUG : WLR_INFO, NULL);
+
+	/* Backtrace on a crash. Prime backtrace() once so its lazy libgcc load
+	 * doesn't happen inside the (async-signal) handler. */
+	void *prime[1];
+	backtrace(prime, 1);
+	struct sigaction crash = { .sa_handler = crash_handler };
+	sigemptyset(&crash.sa_mask);
+	sigaction(SIGSEGV, &crash, NULL);
+	sigaction(SIGABRT, &crash, NULL);
+	sigaction(SIGBUS, &crash, NULL);
+	sigaction(SIGFPE, &crash, NULL);
 
 	/* Reap spawned children with a handler, not SIG_IGN: an ignored SIGCHLD
 	 * survives exec, and Xwayland inheriting it breaks its xkbcomp Popen

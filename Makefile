@@ -60,8 +60,10 @@ $(OBJS): | $(PROTO_HDRS)
 build/%.o: src/%.c | build
 	$(CC) $(HONEY_CFLAGS) -c $< -o $@
 
+# -rdynamic exports honey's symbols so the crash backtrace names its own
+# functions even when the packaged binary is stripped (.dynsym survives strip).
 honey: $(OBJS)
-	$(CC) $(HONEY_CFLAGS) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+	$(CC) $(HONEY_CFLAGS) $(LDFLAGS) -rdynamic -o $@ $^ $(LDLIBS)
 
 # honeyctl is a standalone unix-socket client; no wlroots/wayland linkage.
 honeyctl: honeyctl.c
