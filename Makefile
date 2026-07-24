@@ -10,7 +10,7 @@
 # xcb + xcbutilwm are needed for the XWayland headers; the Xwayland binary is a
 # runtime dependency (nix `xwayland`), started lazily on the first X11 client.
 
-VERSION   = 0.20.16
+VERSION   = 0.20.17
 
 CC       ?= cc
 SCANNER  ?= wayland-scanner
