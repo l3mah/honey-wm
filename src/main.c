@@ -5,6 +5,7 @@
  * event loop. Output, window, and input policy live in the other modules.
  */
 #include <execinfo.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -76,19 +77,34 @@ static void reap_children (int signo) {
 
 /* -------------------------------------------------------------------- crashes */
 
-/* On a fatal signal, dump a backtrace to stderr (honey's log) then re-raise so
- * the process still dies. -rdynamic in the link makes the frames name honey's
- * own functions even in a stripped build. */
+/* $HOME/honey-crash.log, filled at startup; the handler appends here so a
+ * crash is captured even when stdout is truncated on the next login. */
+static char crash_log_path[4096];
+
+/* On a fatal signal, dump a backtrace to stderr AND to the dedicated crash
+ * log, then re-raise so the process still dies. -rdynamic makes the frames
+ * name honey's own functions even in a stripped build. */
 static void crash_handler (int sig) {
 	void *frames[64];
 	int n = backtrace(frames, 64);
 	const char *name = strsignal(sig);
 	char header[128];
 	int len = snprintf(header, sizeof header,
-			"\nhoney: FATAL signal %d (%s) — backtrace:\n", sig,
-			name ? name : "?");
+			"\nhoney %s: FATAL signal %d (%s) — backtrace:\n", HONEY_VERSION,
+			sig, name ? name : "?");
+
 	if (write(STDERR_FILENO, header, len) < 0) { /* best effort */ }
 	backtrace_symbols_fd(frames, n, STDERR_FILENO);
+
+	if (crash_log_path[0]) {
+		int fd = open(crash_log_path, O_WRONLY | O_CREAT | O_APPEND, 0644);
+		if (fd >= 0) {
+			if (write(fd, header, len) < 0) { /* best effort */ }
+			backtrace_symbols_fd(frames, n, fd);
+			close(fd);
+		}
+	}
+
 	signal(sig, SIG_DFL);
 	raise(sig);
 }
@@ -109,8 +125,12 @@ int main (
 	/* HONEY_DEBUG raises wlroots to DEBUG (cursor/DRM/render diagnostics). */
 	wlr_log_init(getenv("HONEY_DEBUG") ? WLR_DEBUG : WLR_INFO, NULL);
 
-	/* Backtrace on a crash. Prime backtrace() once so its lazy libgcc load
-	 * doesn't happen inside the (async-signal) handler. */
+	/* Backtrace on a crash → stderr and $HOME/honey-crash.log. Prime
+	 * backtrace() once so its lazy libgcc load doesn't happen in the handler. */
+	const char *home = getenv("HOME");
+	if (home)
+		snprintf(crash_log_path, sizeof crash_log_path, "%s/honey-crash.log",
+				home);
 	void *prime[1];
 	backtrace(prime, 1);
 	struct sigaction crash = { .sa_handler = crash_handler };
